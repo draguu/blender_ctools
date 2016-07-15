@@ -64,9 +64,6 @@ LAYER_LOCK = 'use_lock'  # verts.layers.int
 LAYER_X = 'lock_x'  # verts.layers.float
 LAYER_Y = 'lock_y'  # verts.layers.float
 LAYER_Z = 'lock_z'  # verts.layers.float
-LAYER_GX = 'lock_global_x'  # verts.layers.float 0.2.0でのみ使用
-LAYER_GY = 'lock_global_y'  # verts.layers.float 0.2.0でのみ使用
-LAYER_GZ = 'lock_global_z'  # verts.layers.float 0.2.0でのみ使用
 LAYER_TMP_SELECT = '_select'  # [verts|edges|faces].layers.int
 LAYER_TMP_HISTORY = '_history'  # [verts|edges|faces].layers.int
 LAYER_TMP_ACTIVE = '_active'  # faces.layers.int
@@ -189,8 +186,7 @@ def callback_save_pre(dummy):
             skip = True
             if LAYER_LOCK in me.vertex_layers_int:
                 skip = False
-            for name in (LAYER_X, LAYER_Y, LAYER_Z,
-                         LAYER_GX, LAYER_GY, LAYER_GZ):
+            for name in (LAYER_X, LAYER_Y, LAYER_Z):
                 if name in me.vertex_layers_float:
                     skip = False
             if skip:
@@ -198,11 +194,6 @@ def callback_save_pre(dummy):
             bm = bmesh.new()
             bm.from_mesh(me)
         for name in (LAYER_X, LAYER_Y, LAYER_Z):
-            layer = bm.verts.layers.float.get(name)
-            if layer:
-                bm.verts.layers.float.remove(layer)
-        # 0.2.0で追加した分
-        for name in (LAYER_GX, LAYER_GY, LAYER_GZ):
             layer = bm.verts.layers.float.get(name)
             if layer:
                 bm.verts.layers.float.remove(layer)
@@ -703,6 +694,8 @@ class MESH_PT_LockCoords(bpy.types.Panel):
         # col.operator_enum('mesh.lock_coords', 'mode')
         op = col.operator('mesh.lock_coords', text='Lock')
         op.mode = 'LOCK_SEL'
+        op = col.operator('mesh.lock_coords', text='Lock Deselected')
+        op.mode = 'LOCK_DESEL'
         op = col.operator('mesh.lock_coords', text='Unlock')
         op.mode = 'UNLOCK_SEL'
         op = col.operator('mesh.lock_coords', text='Unlock All')
@@ -755,6 +748,8 @@ class VIEW3D_MT_edit_mesh_lock_coords(bpy.types.Menu):
         # layout.operator_enum('mesh.lock_coords', 'mode')
         op = layout.operator('mesh.lock_coords', text='Lock Selected')
         op.mode = 'LOCK_SEL'
+        op = layout.operator('mesh.lock_coords', text='Lock Deselected')
+        op.mode = 'LOCK_DESEL'
         op = layout.operator('mesh.lock_coords', text='Unlock Selected')
         op.mode = 'UNLOCK_SEL'
         op = layout.operator('mesh.lock_coords', text='Unlock All')
