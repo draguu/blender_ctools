@@ -1617,7 +1617,8 @@ def draw_measure(context, event):
     if not rv3d:
         return
 
-    if not (data.simple_measure or running_measure):
+    if not (prefs.use_simple_measure and data.simple_measure or
+            running_measure):
         return
 
     pmat = rv3d.perspective_matrix
@@ -2402,16 +2403,23 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
                         vec2 = vav.unproject(region, rv3d, mco, dvec)
                         data.measure_points[-1] += vec2 - vec1
                         retval = {'RUNNING_MODAL'}
-            if not running_measure and prefs.use_simple_measure:
+
+            if not running_measure:
+                enable = None
                 if event.type in ('LEFT_ALT', 'RIGHT_ALT'):
-                    if event.value == 'PRESS' and not data.simple_measure:
+                    if (event.value == 'PRESS' and not data.simple_measure and
+                            prefs.use_simple_measure):
+                        enable = True
+                    elif (event.value == 'RELEASE' or
+                              not prefs.use_simple_measure):
+                        enable = False
+                if enable is not None:
+                    if enable:
                         data.simple_measure = True
-                        data.measure_points.clear()
-                        retval = {'RUNNING_MODAL'}
-                    elif event.value == 'RELEASE':
+                    else:
                         data.simple_measure = False
-                        data.measure_points.clear()
-                        retval = {'RUNNING_MODAL'}
+                    data.measure_points.clear()
+                    retval = {'RUNNING_MODAL'}
                     do_redraw = True
 
         return retval, do_redraw, do_redraw_panel
