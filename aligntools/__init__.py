@@ -98,7 +98,6 @@ EPS = 1e-5
 # Preference
 ###############################################################################
 class AlignToolsPreferences(
-        utils.AddonKeyMapUtility,
         utils.AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -109,12 +108,10 @@ class AlignToolsPreferences(
 
         layout.prop(self, 'use_pie_menu')
 
-        super().draw(context, layout.column())
-
     def update_keymap_items(self, context=None):
         items = []
-        for km_name, kmi_id in self.registered_keymap_items():
-            km = self.get_keymap(km_name)
+        for km_name, kmi_id in ari.keymap_items:
+            km = ari.get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
                     items.append(kmi)
@@ -413,9 +410,10 @@ classes.extend(op_matrix.classes)
 classes.extend(op_shift.classes)
 
 
-addon_keymaps = []
+ari = utils.AddonRegisterInfo(__name__, 'AlignToolsPreferences')
 
 
+@ari.register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -425,14 +423,12 @@ def register():
     if kc:
         addon_prefs = AlignToolsPreferences.get_instance()
         """:type: AlignToolsPreferences"""
-        km = addon_prefs.get_keymap('3D View')
+        km = ari.get_keymap('3D View')
         kmi = km.keymap_items.new(
             'wm.call_menu', 'A', 'PRESS', shift=True, ctrl=True, alt=True,
             head=True)
         # kmi.active = False
         kmi.properties.name = MenuMain.bl_idname
-        addon_keymaps.append((km, kmi))
-        addon_prefs.register_keymap_items(addon_keymaps)
 
         addon_prefs.update_keymap_items()
 
@@ -441,11 +437,8 @@ def register():
     bpy.app.handlers.load_post.append(load_post)
 
 
+@ari.unregister
 def unregister():
-    addon_prefs = AlignToolsPreferences.get_instance()
-    """:type: AlignToolsPreferences"""
-    addon_prefs.unregister_keymap_items()
-
     custom_icons.unload_icons()
     bpy.app.handlers.load_pre.remove(load_pre)
     bpy.app.handlers.load_post.remove(load_post)

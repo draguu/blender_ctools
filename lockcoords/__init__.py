@@ -800,7 +800,6 @@ def draw_header(self, context):
 # AddonPreferences
 ###############################################################################
 class LockCoordsPreferences(
-        utils.AddonKeyMapUtility,
         utils.AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -820,9 +819,11 @@ classes = [
     LockCoordsPreferences,
 ]
 
-addon_keymaps = []
+
+ari = utils.AddonRegisterInfo(__name__, 'LockCoordsPreferences')
 
 
+@ari.register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -846,16 +847,13 @@ def register():
             try:
                 kmi = km.keymap_items.new('wm.call_menu', **kwargs)
                 kmi.properties.name = 'VIEW3D_MT_edit_mesh_lock_coords'
-                addon_keymaps.append((km, kmi))
             except:
                 # import traceback
                 # traceback.print_exc()
                 pass
-        addon_prefs = LockCoordsPreferences.get_instance()
-        """:type: LockCoordsPreferences"""
-        addon_prefs.register_keymap_items(addon_keymaps)
 
 
+@ari.unregister
 def unregister():
     try:
         delattr(PREFS_LOCATION[0], 'lock_coords')
@@ -864,10 +862,6 @@ def unregister():
     for obj in getattr(bpy.data, PREFS_LOCATION[2]):
         if obj.get('lock_coords') is not None:
             del obj['lock_coords']
-
-    addon_prefs = LockCoordsPreferences.get_instance()
-    """:type: LockCoordsPreferences"""
-    addon_prefs.unregister_keymap_items()
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

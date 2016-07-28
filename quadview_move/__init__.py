@@ -47,7 +47,7 @@ try:
 except NameError:
     pass
 from .structures import *
-from .utils import AddonPreferences, SpaceProperty, AddonKeyMapUtility
+from .utils import AddonPreferences, SpaceProperty
 
 
 # regionの幅と高さの最小幅
@@ -55,7 +55,6 @@ MIN_SIZE = 5
 
 
 class QuadViewMovePreferences(
-        AddonKeyMapUtility,
         AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -73,8 +72,6 @@ class QuadViewMovePreferences(
         row.prop(self, 'threshold')
         column = split.column()
         column = split.column()
-
-        super().draw(context, layout.column())
 
 
 def get_window_modal_handlers(window):
@@ -356,9 +353,11 @@ classes = [
     VIEW3D_PG_QuadViewAspect,
 ]
 
-addon_keymaps = []
+
+ari = utils.AddonRegisterInfo(__name__, 'QuadViewMovePreferences')
 
 
+@ari.register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -370,20 +369,13 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        addon_prefs = QuadViewMovePreferences.get_instance()
-        """:type: QuadViewMovePreferences"""
-        km = addon_prefs.get_keymap('Screen Editing')
+        km = ari.get_keymap('Screen Editing')
         kmi = km.keymap_items.new('view3d.quadview_move', 'LEFTMOUSE', 'PRESS',
                                   head=True)
-        addon_keymaps.append((km, kmi))
-        addon_prefs.register_keymap_items(addon_keymaps)
 
 
+@ari.unregister
 def unregister():
-    addon_prefs = QuadViewMovePreferences.get_instance()
-    """:type: QuadViewMovePreferences"""
-    addon_prefs.unregister_keymap_items()
-
     bpy.app.handlers.scene_update_post.remove(scene_update_func)
 
     space_prop.unregister()

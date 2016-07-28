@@ -64,7 +64,7 @@ try:
     importlib.reload(modalmanager)
 except NameError:
     pass
-from .utils import AddonPreferences, AddonKeyMapUtility
+from .utils import AddonPreferences
 from .modalmanager import ModalHandlerManager
 
 
@@ -72,7 +72,6 @@ from .modalmanager import ModalHandlerManager
 # Addon Preferences
 ###############################################################################
 class ScreenCastKeysPreferences(
-    AddonKeyMapUtility,
     AddonPreferences,
     bpy.types.PropertyGroup if '.' in __name__ else
     bpy.types.AddonPreferences):
@@ -160,8 +159,6 @@ class ScreenCastKeysPreferences(
         col.prop(self, 'origin')
         col.prop(self, 'offset')
         col.prop(self, 'show_last_operator')
-
-        super().draw(context)
 
 
 ###############################################################################
@@ -1041,9 +1038,11 @@ classes = (
     ScreencastKeysPanel,
 )
 
-addon_keymaps = []
+
+ari = utils.AddonRegisterInfo(__name__, 'ScreenCastKeysPreferences')
 
 
+@ari.register
 def register():
     for c in classes:
         bpy.utils.register_class(c)
@@ -1054,18 +1053,10 @@ def register():
         km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
         kmi = km.keymap_items.new('wm.screencast_keys', 'C', 'PRESS',
                                   shift=True, alt=True)
-        addon_keymaps.append((km, kmi))
-
-        addon_prefs = ScreenCastKeysPreferences.get_instance()
-        """:type: ScreenCastKeysPreferences"""
-        addon_prefs.register_keymap_items(addon_keymaps)
 
 
+@ari.unregister
 def unregister():
-    addon_prefs = ScreenCastKeysPreferences.get_instance()
-    """:type: ScreenCastKeysPreferences"""
-    addon_prefs.unregister_keymap_items()
-
     for c in classes:
         bpy.utils.unregister_class(c)
 

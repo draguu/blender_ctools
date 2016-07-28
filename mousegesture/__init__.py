@@ -731,7 +731,6 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 
 class MouseGesturePreferences(
-        utils.AddonKeyMapUtility,
         utils.AddonPreferences,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -797,8 +796,6 @@ class MouseGesturePreferences(
         op = sub.operator('wm.mouse_gesture_stubs', text='Add New',
                           icon='ZOOMIN')
         op.function = 'group_add'
-
-        super().draw(context, column.column())
 
 
 ###############################################################################
@@ -1414,7 +1411,6 @@ classes = [
 
 
 changed_key_map_items = []
-addon_keymaps = []
 blender_keymaps = []
 
 
@@ -1440,6 +1436,10 @@ def load_handler(dummy):
     prefs.ensure_operator_args()
 
 
+ari = utils.AddonRegisterInfo(__name__, 'MouseGesturePreferences')
+
+
+@ari.register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -1456,30 +1456,20 @@ def register():
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       head=True)
             kmi.properties.group = 'View'
-            addon_keymaps.append((km, kmi))
         else:
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       shift=True, head=True)
             kmi.properties.group = 'Transform: Scale'
-            addon_keymaps.append((km, kmi))
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       head=True)
             kmi.properties.group = 'Mesh Select Mode'
-            addon_keymaps.append((km, kmi))
-
-        addon_prefs = MouseGesturePreferences.get_instance()
-        """:type: MouseGesturePreferences"""
-        addon_prefs.register_keymap_items(addon_keymaps)
 
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
     bpy.app.handlers.load_post.append(load_handler)
 
 
+@ari.unregister
 def unregister():
-    addon_prefs = MouseGesturePreferences.get_instance()
-    """:type: MouseGesturePreferences"""
-    addon_prefs.unregister_keymap_items()
-
     for km, kmi in blender_keymaps:
         kmi.value = 'PRESS'
     blender_keymaps.clear()
