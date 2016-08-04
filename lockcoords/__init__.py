@@ -823,7 +823,7 @@ classes = [
 ari = utils.AddonRegisterInfo(__name__, 'LockCoordsPreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -853,7 +853,7 @@ def register():
                 pass
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     try:
         delattr(PREFS_LOCATION[0], 'lock_coords')

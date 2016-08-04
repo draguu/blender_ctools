@@ -1042,7 +1042,7 @@ classes = (
 ari = utils.AddonRegisterInfo(__name__, 'ScreenCastKeysPreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
     for c in classes:
         bpy.utils.register_class(c)
@@ -1055,7 +1055,7 @@ def register():
                                   shift=True, alt=True)
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     for c in classes:
         bpy.utils.unregister_class(c)

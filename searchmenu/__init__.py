@@ -277,7 +277,7 @@ classes = [
 ari = utils.AddonRegisterInfo(__name__, 'SearchMenuPreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
 
     for cls in classes:
@@ -292,7 +292,7 @@ def register():
                                   alt=True)
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

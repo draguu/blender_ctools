@@ -23,37 +23,50 @@ import bpy
 _bpy = bpy  # addon_utils.py用
 
 
+# 現在未使用
 def get_addon_preferences(name):
     """AddonPreferencesのインスタンスを返す
     :param name: モジュール名。 e.g. 'ctools', 'ctools.quadview_move'
     :type name: str
     :rtype: AddonPreferences
     """
-    context = bpy.context
-    if '.' in name:
-        pkg, mod = name.split('.')
-        module = importlib.import_module(pkg)
-        if getattr(module, 'NAME', '') == 'ctools':
-            prefs = module.get_addon_preferences(mod)
-            return prefs
-        else:
-            prefs = context.user_preferences.addons[pkg].preferences
-            return getattr(prefs, mod)
-    else:
-        return context.user_preferences.addons[name].preferences
+    attrs = name.split('.')
+    prefs = bpy.context.user_preferences.addons[attrs[0]].preferences
+    for attr in attrs[1:]:
+        prefs = getattr(prefs, attr)
+    return prefs
 
 
 class AddonPreferences:
     @classmethod
-    def get_instance(cls, package=''):
-        if not package:
-            package = __package__
-        return get_addon_preferences(package)
+    def get_instance(cls):
+        """AddonPreferencesのインスタンスを返す
+        :rtype: AddonPreferences
+        """
+        # attrs = __package__.split('.')
+        attrs = cls.bl_idname.split('.')
+        prefs = bpy.context.user_preferences.addons[attrs[0]].preferences
+        for attr in attrs[1:]:
+            prefs = getattr(prefs, attr)
+        return prefs
 
     @classmethod
     def register(cls):
         if '.' in __package__:
-            cls.get_instance()
+            # 親オブジェクトへの登録
+            attrs = __package__.split('.')
+            prefs = bpy.context.user_preferences.addons[attrs[0]].preferences
+            for attr in attrs[1:-1]:
+                prefs = getattr(prefs, attr)
+            prefs_class = prefs.__class__
+            prop = bpy.props.PointerProperty(type=cls)
+            setattr(prefs_class, attrs[-1], prop)
+
+            # AddonPreferencesではインスタンスに属性を反映させる為に
+            # registerとunregisterが必要になる
+            bpy.utils.unregister_class(prefs_class)
+            bpy.utils.register_class(prefs_class)
+
         c = super()
         if hasattr(c, 'register'):
             c.register()
@@ -64,6 +77,18 @@ class AddonPreferences:
         if hasattr(c, 'unregister'):
             c.unregister()
 
+        if '.' in __package__:
+            # 親オブジェクトからの登録解除
+            attrs = __package__.split('.')
+            prefs = bpy.context.user_preferences.addons[attrs[0]].preferences
+            for attr in attrs[1:-1]:
+                prefs = getattr(prefs, attr)
+            if attrs[-1] in prefs:
+                del prefs[attrs[-1]]
+            prefs_class = prefs.__class__
+            delattr(prefs_class, attrs[-1])
+            bpy.utils.unregister_class(prefs_class)
+            bpy.utils.register_class(prefs_class)
 
 class SpaceProperty:
     """
@@ -335,6 +360,36 @@ def operator_call(op, *args, _scene_update=True, **kw):
     return ret
 
 
+# class AddonRegisterInfomation:
+#     """継承用"""
+#     register_info = AddonRegisterInfo(__package__)
+#
+#     @classmethod
+#     def generate(cls, module, auto_register_attributes=False):
+#         namespace = {'module': module,
+#                      'auto_register_attributes': auto_register_attributes}
+#         new_class = type(cls.__name__, (cls,), namespace)
+#         return new_class
+#
+#     def draw(self, context):
+#         c = super()
+#         if hasattr(c, 'draw'):
+#             c.draw()
+#         # draw()
+#
+#     @classmethod
+#     def register(cls):
+#         c = super()
+#         if hasattr(c, 'register'):
+#             c.register()
+#
+#     @classmethod
+#     def unregister(cls):
+#         c = super()
+#         if hasattr(c, 'unregister'):
+#             c.unregister()
+
+
 class AddonRegisterInfo:
     IGRORE_ADDONS = ['CTools']  # bl_info['name']
     ADDON_REGISTER_INFO = True  # この属性の有無でインスタンスを判別する
@@ -413,9 +468,9 @@ class AddonRegisterInfo:
         for c in classes:
             c.register_class()
 
-        if not hasattr(_bpy.types.WindowManager, 'addon_register_information'):
-            _bpy.types.WindowManager.addon_register_information = \
-                _bpy.props.PointerProperty(type=cls._AddonRegisterInformation)
+        c = getattr(_bpy.types, cls._AddonRegisterInformation.__name__)
+        _bpy.types.WindowManager.addon_register_information = \
+            _bpy.props.PointerProperty(type=c)
 
     @classmethod
     def unregister_classes(cls):
@@ -431,6 +486,9 @@ class AddonRegisterInfo:
                    ]
         for c in classes[::-1]:
             c.unregister_class()
+
+        if not hasattr(_bpy.types, cls._AddonRegisterInformation.__name__):
+            del _bpy.types.WindowManager.addon_register_information
 
     @staticmethod
     def _reversed_keymap_table():
@@ -485,31 +543,16 @@ class AddonRegisterInfo:
             raise ValueError(msg)
         return km
 
-    def get_instance(self, name=''):
+    def get_instance(self):
         """AddonPreferencesのインスタンスを返す
-        :param name: ctools以外には関係ないもの
-        :type name: str
         :rtype: AddonPreferences
         """
-        if not name:
-            name = self.module
-        if __name__ == 'addon_utils':
-            # get_addon_preferencesの中身をコピペ
-            context = _bpy.context
-            if '.' in name:
-                pkg, mod = name.split('.')
-                module = importlib.import_module(pkg)
-                if getattr(module, 'NAME', '') == 'ctools':
-                    prefs = module.get_addon_preferences(mod)
-                    return prefs
-                else:
-                    prefs = context.user_preferences.addons[
-                        pkg].preferences
-                    return getattr(prefs, mod)
-            else:
-                return context.user_preferences.addons[name].preferences
-        else:
-            return get_addon_preferences(name)
+        name = self.module
+        attrs = name.split('.')
+        prefs = bpy.context.user_preferences.addons[attrs[0]].preferences
+        for attr in attrs[1:]:
+            prefs = getattr(prefs, attr)
+        return prefs
 
     def get_current_keymap_item_values(self):
         """
@@ -1578,7 +1621,7 @@ class AddonRegisterInfo:
     _AddonRegisterInformationUI.__name__ = 'AddonRegisterInformationUI'
 
     # addon_utils.py ------------------------------------------------
-    def register(self, func, lock_default_keymaps=None):
+    def module_register(self, func, lock_default_keymaps=None):
         """アドオンのregister関数にデコレータとして使用する"""
         import functools
 
@@ -1694,23 +1737,19 @@ class AddonRegisterInfo:
         _register._register = func
         return _register
 
-    def register_ex(self, lock_default_keymaps=None):
+    def module_register_ex(self, lock_default_keymaps=None):
         import functools
         return functools.partial(
             self.register, lock_default=lock_default_keymaps)
 
-    def unregister(self, func, only_added_keymaps=False, classes=False,
-                   attributes=False):
+    def module_unregister(self, func, only_added_keymaps=False, classes=False,
+                          attributes=False):
         """アドオンのunregister関数にデコレータとして使用する"""
         import functools
 
         @functools.wraps(func)
         def _unregister():
             prefs_class = self._addon_preferences_class
-            ri = prefs_class.register_info
-            ri.remove_keymap_items(remove_only_added=only_added_keymaps)
-            ri.unregister_classes()
-            delattr(prefs_class, 'register_info')
 
             if self._do_unregister_addon_preferences_class:
                 _bpy.utils.unregister_class(prefs_class)
@@ -1722,6 +1761,11 @@ class AddonRegisterInfo:
 
             delattr(_bpy.types.AddonRegisterInformation,
                     self.module.replace('.', '_'))
+
+            ri = prefs_class.register_info
+            ri.remove_keymap_items(remove_only_added=only_added_keymaps)
+            ri.unregister_classes()
+            delattr(prefs_class, 'register_info')
 
             if classes:
                 self.remove_classes()
@@ -1737,8 +1781,8 @@ class AddonRegisterInfo:
         _unregister._unregister = func
         return _unregister
 
-    def unregister_ex(self, only_added_keymaps=False, classes=False,
-                      attributes=False):
+    def module_unregister_ex(self, only_added_keymaps=False, classes=False,
+                             attributes=False):
         """アドオンのunregister関数にデコレータとして使用する"""
         import functools
         return functools.partial(

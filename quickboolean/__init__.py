@@ -1370,7 +1370,7 @@ classes = [
 ari = utils.AddonRegisterInfo(__name__, 'QuickBooleanPreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -1394,7 +1394,7 @@ def register():
         kmi.active = False
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     del bpy.types.WindowManager.quick_boolean
     try:

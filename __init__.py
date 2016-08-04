@@ -195,21 +195,15 @@ def _get_pref_class(mod):
 
 
 def get_addon_preferences(name=''):
-    """登録と取得"""
+    """
+    :param name: 指定するとctoolsではなく、そのサブモジュールの物を返す
+    :rtype: bpy.types.AddonPreferences
+    """
     addons = bpy.context.user_preferences.addons
     if __name__ not in addons:  # wm.read_factory_settings()
         return None
     prefs = addons[__name__].preferences
     if name:
-        if not hasattr(prefs, name):
-            fake_mod = fake_modules.get(name)
-            mod = importlib.import_module(fake_mod.__name__)
-            cls = _get_pref_class(mod)
-            if cls:
-                prop = bpy.props.PointerProperty(type=cls)
-                setattr(CToolsPreferences, name, prop)
-                bpy.utils.unregister_class(CToolsPreferences)
-                bpy.utils.register_class(CToolsPreferences)
         return getattr(prefs, name, None)
     else:
         return prefs

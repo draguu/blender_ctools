@@ -1439,7 +1439,7 @@ def load_handler(dummy):
 ari = utils.AddonRegisterInfo(__name__, 'MouseGesturePreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -1468,7 +1468,7 @@ def register():
     bpy.app.handlers.load_post.append(load_handler)
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     for km, kmi in blender_keymaps:
         kmi.value = 'PRESS'

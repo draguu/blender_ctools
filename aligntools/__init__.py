@@ -413,7 +413,7 @@ classes.extend(op_shift.classes)
 ari = utils.AddonRegisterInfo(__name__, 'AlignToolsPreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -437,7 +437,7 @@ def register():
     bpy.app.handlers.load_post.append(load_post)
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     custom_icons.unload_icons()
     bpy.app.handlers.load_pre.remove(load_pre)

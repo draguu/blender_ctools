@@ -357,7 +357,7 @@ classes = [
 ari = utils.AddonRegisterInfo(__name__, 'QuadViewMovePreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -374,7 +374,7 @@ def register():
                                   head=True)
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     bpy.app.handlers.scene_update_post.remove(scene_update_func)
 

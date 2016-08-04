@@ -411,7 +411,7 @@ classes = [
 ari = utils.AddonRegisterInfo(__name__, 'ListValidKeysPreferences')
 
 
-@ari.register
+@ari.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -425,7 +425,7 @@ def register():
             'BACK_SLASH', 'PRESS', shift=True, ctrl=True, alt=True)
 
 
-@ari.unregister
+@ari.module_unregister
 def unregister():
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
