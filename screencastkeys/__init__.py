@@ -63,8 +63,7 @@ try:
     importlib.reload(utils)
     importlib.reload(modalmanager)
 except NameError:
-    pass
-from .utils import AddonPreferences
+    from . import utils
 from .modalmanager import ModalHandlerManager
 
 
@@ -72,7 +71,8 @@ from .modalmanager import ModalHandlerManager
 # Addon Preferences
 ###############################################################################
 class ScreenCastKeysPreferences(
-    AddonPreferences,
+    utils.AddonPreferences,
+    utils.AddonRegisterInfo,
     bpy.types.PropertyGroup if '.' in __name__ else
     bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -159,6 +159,8 @@ class ScreenCastKeysPreferences(
         col.prop(self, 'origin')
         col.prop(self, 'offset')
         col.prop(self, 'show_last_operator')
+
+        super().draw(context, self.layout)
 
 
 ###############################################################################
@@ -1039,10 +1041,7 @@ classes = (
 )
 
 
-ari = utils.AddonRegisterInfo(__name__, 'ScreenCastKeysPreferences')
-
-
-@ari.module_register
+@ScreenCastKeysPreferences.module_register
 def register():
     for c in classes:
         bpy.utils.register_class(c)
@@ -1055,7 +1054,7 @@ def register():
                                   shift=True, alt=True)
 
 
-@ari.module_unregister
+@ScreenCastKeysPreferences.module_unregister
 def unregister():
     for c in classes:
         bpy.utils.unregister_class(c)

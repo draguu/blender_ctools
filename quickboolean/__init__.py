@@ -90,6 +90,7 @@ view_operators = [
 
 class QuickBooleanPreferences(
         utils.AddonPreferences,
+        utils.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
 
@@ -118,6 +119,8 @@ class QuickBooleanPreferences(
 
         split.column()
         split.column()
+
+        super().draw(context, layout)
 
 
 def unwrap_uvs_edit(bm, faces):
@@ -1367,10 +1370,7 @@ classes = [
 ]
 
 
-ari = utils.AddonRegisterInfo(__name__, 'QuickBooleanPreferences')
-
-
-@ari.module_register
+@QuickBooleanPreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -1383,18 +1383,18 @@ def register():
 
     kc = wm.keyconfigs.addon
     if kc:
-        km = ari.get_keymap('Mesh')
+        km = QuickBooleanPreferences.get_keymap('Mesh')
         kmi = km.keymap_items.new('mesh.intersect_cutoff', 'B', 'PRESS',
                                   shift=True, ctrl=True, alt=True, oskey=True)
         kmi.active = False
 
-        km = ari.get_keymap('Object Mode')
+        km = QuickBooleanPreferences.get_keymap('Object Mode')
         kmi = km.keymap_items.new('mesh.intersect_cutoff', 'B', 'PRESS',
                                   shift=True, ctrl=True, alt=True, oskey=True)
         kmi.active = False
 
 
-@ari.module_unregister
+@QuickBooleanPreferences.module_unregister
 def unregister():
     del bpy.types.WindowManager.quick_boolean
     try:

@@ -99,6 +99,7 @@ EPS = 1e-5
 ###############################################################################
 class AlignToolsPreferences(
         utils.AddonPreferences,
+        utils.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -108,9 +109,11 @@ class AlignToolsPreferences(
 
         layout.prop(self, 'use_pie_menu')
 
+        super().draw(context, self.layout)
+
     def update_keymap_items(self, context=None):
         items = []
-        for km_name, kmi_id in ari.keymap_items:
+        for km_name, kmi_id in self.keymap_items:
             km = ari.get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
@@ -410,10 +413,7 @@ classes.extend(op_matrix.classes)
 classes.extend(op_shift.classes)
 
 
-ari = utils.AddonRegisterInfo(__name__, 'AlignToolsPreferences')
-
-
-@ari.module_register
+@AlignToolsPreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -423,7 +423,7 @@ def register():
     if kc:
         addon_prefs = AlignToolsPreferences.get_instance()
         """:type: AlignToolsPreferences"""
-        km = ari.get_keymap('3D View')
+        km = AlignToolsPreferences.get_keymap('3D View')
         kmi = km.keymap_items.new(
             'wm.call_menu', 'A', 'PRESS', shift=True, ctrl=True, alt=True,
             head=True)
@@ -437,7 +437,7 @@ def register():
     bpy.app.handlers.load_post.append(load_post)
 
 
-@ari.module_unregister
+@AlignToolsPreferences.module_unregister
 def unregister():
     custom_icons.unload_icons()
     bpy.app.handlers.load_pre.remove(load_pre)

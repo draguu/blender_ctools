@@ -49,6 +49,7 @@ TEXT_NAME = 'valid_shortcuts.txt'
 
 class ListValidKeysPreferences(
     utils.AddonPreferences,
+    utils.AddonRegisterInfo,
     bpy.types.PropertyGroup if '.' in __name__ else
     bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -69,6 +70,8 @@ class ListValidKeysPreferences(
         col.prop(self, 'output')
         split.column()
         split.column()
+
+        super().draw(context, self.layout)
 
 
 class wmKeyMap(ct.Structure):
@@ -408,10 +411,7 @@ classes = [
 ]
 
 
-ari = utils.AddonRegisterInfo(__name__, 'ListValidKeysPreferences')
-
-
-@ari.module_register
+@ListValidKeysPreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -419,13 +419,13 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        km = ari.get_keymap('Screen Editing')
+        km = ListValidKeysPreferences.get_keymap('Screen Editing')
         kmi = km.keymap_items.new(
             WM_OT_list_valid_keys.bl_idname,
             'BACK_SLASH', 'PRESS', shift=True, ctrl=True, alt=True)
 
 
-@ari.module_unregister
+@ListValidKeysPreferences.module_unregister
 def unregister():
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

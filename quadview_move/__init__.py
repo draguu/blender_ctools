@@ -45,9 +45,8 @@ try:
     importlib.reload(structures)
     importlib.reload(utils)
 except NameError:
-    pass
+    from . import utils
 from .structures import *
-from .utils import AddonPreferences, SpaceProperty
 
 
 # regionの幅と高さの最小幅
@@ -55,7 +54,8 @@ MIN_SIZE = 5
 
 
 class QuadViewMovePreferences(
-        AddonPreferences,
+        utils.AddonPreferences,
+        utils.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -72,6 +72,8 @@ class QuadViewMovePreferences(
         row.prop(self, 'threshold')
         column = split.column()
         column = split.column()
+
+        super().draw(context, self.layout)
 
 
 def get_window_modal_handlers(window):
@@ -156,7 +158,7 @@ class VIEW3D_PG_QuadViewAspect(bpy.types.PropertyGroup):
     center = bpy.props.FloatVectorProperty(size=2)
 
 
-space_prop = SpaceProperty(
+space_prop = utils.SpaceProperty(
     [bpy.types.SpaceView3D, 'quadview_aspect',
      VIEW3D_PG_QuadViewAspect])
 
@@ -354,10 +356,7 @@ classes = [
 ]
 
 
-ari = utils.AddonRegisterInfo(__name__, 'QuadViewMovePreferences')
-
-
-@ari.module_register
+@QuadViewMovePreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -369,12 +368,12 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        km = ari.get_keymap('Screen Editing')
+        km = QuadViewMovePreferences.get_keymap('Screen Editing')
         kmi = km.keymap_items.new('view3d.quadview_move', 'LEFTMOUSE', 'PRESS',
                                   head=True)
 
 
-@ari.module_unregister
+@QuadViewMovePreferences.module_unregister
 def unregister():
     bpy.app.handlers.scene_update_post.remove(scene_update_func)
 

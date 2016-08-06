@@ -360,99 +360,71 @@ def operator_call(op, *args, _scene_update=True, **kw):
     return ret
 
 
-# class AddonRegisterInfomation:
-#     """継承用"""
-#     register_info = AddonRegisterInfo(__package__)
-#
-#     @classmethod
-#     def generate(cls, module, auto_register_attributes=False):
-#         namespace = {'module': module,
-#                      'auto_register_attributes': auto_register_attributes}
-#         new_class = type(cls.__name__, (cls,), namespace)
-#         return new_class
-#
-#     def draw(self, context):
-#         c = super()
-#         if hasattr(c, 'draw'):
-#             c.draw()
-#         # draw()
-#
-#     @classmethod
-#     def register(cls):
-#         c = super()
-#         if hasattr(c, 'register'):
-#             c.register()
-#
-#     @classmethod
-#     def unregister(cls):
-#         c = super()
-#         if hasattr(c, 'unregister'):
-#             c.unregister()
-
-
 class AddonRegisterInfo:
+    @staticmethod
+    def name_mangling(class_name, attr):
+        if not attr.startswith('__') or attr.endswith('__'):
+            return attr
+        if not isinstance(class_name, str):  # クラスオブジェクトを想定
+            class_name = class_name.__name__
+        return '_' + class_name.lstrip('_') + attr
+
+    @classmethod
+    def derive(cls, bl_idname=None, lock_default_keymap_items=None):
+        """クラス属性を変更した新しいクラスを生成して返す。__new__や__init__が
+        使えないので苦肉の策
+        直接継承せずにこれで生成したクラスを使う
+        :rtype: AddonRegisterInfo
+        """
+        attrs = {
+            'keymap_items': [],
+            cls.name_mangling(cls.__name__, '__default_keymap_items'): [],
+            cls.name_mangling(cls.__name__, '__default_keymap_item_values'): [],
+            'addon_classes': [],
+            'addon_attributes': [],
+        }
+        if bl_idname is not None:
+            attrs['bl_idname'] = bl_idname
+        if lock_default_keymap_items is not None:
+            key = cls.name_mangling(cls.__name__,
+                                    '__lock_default_keymap_items')
+            attrs[key] = lock_default_keymap_items
+        t = type(cls.__name__, (cls,), attrs)
+        return t
+
     IGRORE_ADDONS = ['CTools']  # bl_info['name']
     ADDON_REGISTER_INFO = True  # この属性の有無でインスタンスを判別する
     IDPROP_NAME = 'AddonKeyMapUtility_keymap_items'
 
-    def __init__(self, module='', addon_preferences_name='',
-                 auto_register_attributes=False):
-        self.module = module
-        self.addon_preferences_name = addon_preferences_name
-        self.lock_default = False  # draw()の引数で更新する
-        # 遅いのでデフォルトでは無効にしている
-        self.auto_register_attributes = auto_register_attributes
+    bl_idname = ''
+    __lock_default_keymap_items = False
 
-        self._do_unregister_addon_preferences_class = False
-        self._addon_preferences_class = None
+    # [(km.name, kmi.id), ...]
+    keymap_items = []
+    """:type: list[(str, int)]"""
 
-        # [(km.name, kmi.id), ...]
-        self.keymap_items = []
-        """:type: list[(str, int)]"""
+    # keymaps_set_default()の際に_keymap_itemsを複製
+    # [(km.name, kmi.id), ...]
+    __default_keymap_items = []
+    """:type: list[(str, int)]"""
 
-        # keymaps_set_default()の際に_keymap_itemsを複製
-        # [(km.name, kmi.id), ...]
-        self.default_keymap_items = []
-        """:type: list[(str, int)]"""
+    # get_keymap_item_values()の返り値。
+    __default_keymap_item_values = []
 
-        # get_current_keymap_item_values()の返り値。
-        self._default_keymap_item_values = []
+    addon_classes = []
+    """:type: list[str]"""
 
-        self.classes = []
-        """:type: list[str]"""
+    addon_attributes = []
+    """:type: list[(str, str)]"""
 
-        self.attributes = []
-        """:type: list[(str, str)]"""
-
-    def _get_wm_prop(self):
+    def __get_wm_prop(self):
         wm = _bpy.context.window_manager
         return getattr(wm.addon_register_information,
-                       self.module.replace('.', '_'))
-
-    @property
-    def show_keymaps(self):
-        return self._get_wm_prop().show_keymaps
-
-    @property
-    def keymaps_filter_type(self):
-        return self._get_wm_prop().keymaps_filter_type
-
-    @property
-    def keymaps_filter_text(self):
-        return self._get_wm_prop().keymaps_filter_text
-
-    @property
-    def show_classes(self):
-        return self._get_wm_prop().show_classes
-
-    @property
-    def show_attributes(self):
-        return self._get_wm_prop().show_attributes
+                       self.bl_idname.replace('.', '_'))
 
     # register / unregister -----------------------------------------
-
     @classmethod
-    def register_classes(cls):
+    def register(cls):
         """継承したクラスでもregisterを定義するなら、super関数を使って
         このメソッドを呼ぶ。
         super().register()
@@ -472,8 +444,12 @@ class AddonRegisterInfo:
         _bpy.types.WindowManager.addon_register_information = \
             _bpy.props.PointerProperty(type=c)
 
+        c = super()
+        if hasattr(c, 'register'):
+            c.register()
+
     @classmethod
-    def unregister_classes(cls):
+    def unregister(cls):
         """注意事項はregisterと同じ"""
 
         classes = [cls._OperatorKeymapItemAdd,
@@ -490,15 +466,9 @@ class AddonRegisterInfo:
         if not hasattr(_bpy.types, cls._AddonRegisterInformation.__name__):
             del _bpy.types.WindowManager.addon_register_information
 
-    @staticmethod
-    def _reversed_keymap_table():
-        """KeyMapItemがキー、KeyMapが値の辞書を返す"""
-        kc = _bpy.context.window_manager.keyconfigs.addon
-        km_table = {}
-        for km in kc.keymaps:
-            for kmi in km.keymap_items:
-                km_table[kmi] = km
-        return km_table
+        c = super()
+        if hasattr(c, 'unregister'):
+            c.unregister()
 
     @staticmethod
     def get_keymap(name):
@@ -543,18 +513,30 @@ class AddonRegisterInfo:
             raise ValueError(msg)
         return km
 
-    def get_instance(self):
+    @classmethod
+    def get_instance(cls):
         """AddonPreferencesのインスタンスを返す
         :rtype: AddonPreferences
         """
-        name = self.module
+        name = cls.bl_idname
         attrs = name.split('.')
-        prefs = bpy.context.user_preferences.addons[attrs[0]].preferences
+        prefs = _bpy.context.user_preferences.addons[attrs[0]].preferences
         for attr in attrs[1:]:
             prefs = getattr(prefs, attr)
         return prefs
 
-    def get_current_keymap_item_values(self):
+    @staticmethod
+    def __reversed_keymap_table():
+        """KeyMapItemがキー、KeyMapが値の辞書を返す"""
+        kc = _bpy.context.window_manager.keyconfigs.addon
+        km_table = {}
+        for km in kc.keymaps:
+            for kmi in km.keymap_items:
+                km_table[kmi] = km
+        return km_table
+
+    @classmethod
+    def keymap_items_get_attributes(cls):
         """
         :return: [[keymap_name, attrs, props], ...]
             第一要素はkeymap名。
@@ -567,12 +549,12 @@ class AddonRegisterInfo:
         import mathutils
 
         values = []
-        km_table = self._reversed_keymap_table()
+        km_table = cls.__reversed_keymap_table()
 
         keympap_items = []
-        for item in list(self.keymap_items):
+        for item in list(cls.keymap_items):
             km_name, kmi_id = item
-            km = self.get_keymap(km_name)
+            km = cls.get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
                     keympap_items.append(kmi)
@@ -590,7 +572,7 @@ class AddonRegisterInfo:
                     value = int(value)
                 attrs[attr] = value
             # オペレータのプロパティ
-            props = {}
+            op_props = {}
             if not km.is_modal:
                 for attr in kmi.properties.bl_rna.properties.keys():
                     if attr == 'rna_type':
@@ -606,18 +588,19 @@ class AddonRegisterInfo:
                         elif isinstance(value, mathutils.Matrix):
                             value = list(
                                 itertools.chain.from_iterable(value.col))
-                        props[attr] = value
+                        op_props[attr] = value
 
-            values.append([km.name, attrs, props])
+            values.append([km.name, attrs, op_props])
 
         return values
 
-    def _set_values(self, values, set_default=False):
+    @classmethod
+    def keymap_items_set_attributes(cls, values, set_default=False):
         import traceback
-        self.remove_keymap_items()
+        cls.keymap_items_remove()
         keymap_items = []
-        for km_name, attrs, props in values:
-            km = self.get_keymap(km_name)
+        for km_name, attrs, op_props in values:
+            km = cls.get_keymap(km_name)
             if 'INVALID_MODAL_KEYMAP' and km.is_modal:
                 raise ValueError(
                     "not support modal keymap: '{}'".format(km.name))
@@ -635,29 +618,31 @@ class AddonRegisterInfo:
                     'oskey', 'key_modifier')}
                 kmi = km.keymap_items.new(**args)
             kmi.active = attrs['active']
-            for name, value in props.items():
+            for name, value in op_props.items():
                 try:
                     setattr(kmi.properties, name, value)
                 except:
                     traceback.print_exc()
             keymap_items.append(kmi)
-        self.add_keymap_items(keymap_items, set_default, False)
+        cls.keymap_items_add(keymap_items, set_default, False)
 
-    def add_keymap_item(self, kmi):
+    @classmethod
+    def keymap_item_add(cls, kmi):
         """KeyMapItemを登録する
         :param kmi: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid)
         :type kmi: _bpy.types.KeyMapItem | (str, int)
         """
         if isinstance(kmi, _bpy.types.KeyMapItem):
-            km_tabel = self._reversed_keymap_table()
+            km_tabel = cls.__reversed_keymap_table()
             km = km_tabel[kmi]
         else:
             km, kmi = kmi
         if 'INVALID_MODAL_KEYMAP' and km.is_modal:
             raise ValueError("not support modal keymap: '{}'".format(km.name))
-        self.keymap_items.append((km.name, kmi.id))
+        cls.keymap_items.append((km.name, kmi.id))
 
-    def add_keymap_items(self, addon_keymaps, set_default=True,
+    @classmethod
+    def keymap_items_add(cls, addon_keymaps, set_default=True,
                          load=True):
         """KeyMapItemを登録する。keymaps_set_default(), keymaps_load() も
         まとめて行う。
@@ -665,7 +650,7 @@ class AddonRegisterInfo:
             リスト
         :type addon_keymaps: list[_bpy.types.KeyMapItem] | list[(str, int)]
         """
-        km_tabel = self._reversed_keymap_table()
+        km_tabel = cls.__reversed_keymap_table()
         items = []
         for kmi in addon_keymaps:
             if isinstance(kmi, _bpy.types.KeyMapItem):
@@ -676,27 +661,28 @@ class AddonRegisterInfo:
                 raise ValueError(
                     "not support modal keymap: '{}'".format(km.name))
             items.append((km.name, kmi.id))
-        self.keymap_items.extend(items)
+        cls.keymap_items.extend(items)
         if set_default:
-            self.keymaps_set_default()
+            cls.keymap_items_set_default()
         if load:
-            self.keymaps_load()
+            cls.keymap_items_load()
 
-    def remove_keymap_item(self, kmi, remove=True):
+    @classmethod
+    def keymap_item_remove(cls, kmi, remove=True):
         """KeyMapItemの登録を解除する
         :param kmi: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid)
         :type kmi: _bpy.types.KeyMapItem | (str, int)
         :param remove: KeyMapItemをKeyMapItemsから削除する
         :type remove: bool
         """
-        km_table = self._reversed_keymap_table()
+        km_table = cls.__reversed_keymap_table()
         if isinstance(kmi, _bpy.types.KeyMapItem):
             km = km_table[kmi]
             item = (km.name, kmi.id)
         else:
             item = kmi
             km_name, kmi_id = item
-            km = self.get_keymap(km_name)
+            km = cls.get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
                     break
@@ -704,11 +690,12 @@ class AddonRegisterInfo:
                 raise ValueError('KeyMapItem not fond')
         if 'INVALID_MODAL_KEYMAP' and km.is_modal:
             raise ValueError("not support modal keymap: '{}'".format(km.name))
-        self.keymap_items.remove(item)
+        cls.keymap_items.remove(item)
         if remove:
             km.keymap_items.remove(kmi)
 
-    def remove_keymap_items(self, remove=True,
+    @classmethod
+    def keymap_items_remove(cls, remove=True,
                             remove_only_added=False):
         """全てのKeyMapItemの登録を解除する。
         :param remove: KeyMapItemをKeyMap.keymap_itemsから削除する
@@ -718,11 +705,11 @@ class AddonRegisterInfo:
         :type remove_only_added: bool
         """
         if remove:
-            for km_name, kmi_id in self.keymap_items:
+            for km_name, kmi_id in cls.keymap_items:
                 if remove_only_added:
-                    if (km_name, kmi_id) in self.default_keymap_items:
+                    if (km_name, kmi_id) in cls.__default_keymap_items:
                         continue
-                km = self.get_keymap(km_name)
+                km = cls.get_keymap(km_name)
                 for kmi in km.keymap_items:
                     if kmi.id == kmi_id:
                         break
@@ -732,83 +719,90 @@ class AddonRegisterInfo:
                     raise ValueError(
                         "not support modal keymap: '{}'".format(km.name))
                 km.keymap_items.remove(kmi)
-        self.keymap_items.clear()
+        cls.keymap_items.clear()
 
-    def keymaps_set_default(self):
+    @classmethod
+    def keymap_items_set_default(cls):
         """現在登録しているKeyMapItemを初期値(restore時の値)とする"""
-        self._default_keymap_item_values.clear()
-        self._default_keymap_item_values[:] = \
-            self.get_current_keymap_item_values()
-        self.default_keymap_items = self.keymap_items[:]
+        cls.__default_keymap_item_values.clear()
+        cls.__default_keymap_item_values[:] = \
+            cls.keymap_items_get_attributes()
+        cls.__default_keymap_items = cls.keymap_items[:]
 
-    def keymaps_load(self):
+    @classmethod
+    def keymap_items_load(cls):
         """保存されたキーマップを読んで現在のキーマップを置き換える"""
-        addon_prefs = self.get_instance()
-        if self.IDPROP_NAME not in addon_prefs:
+        addon_prefs = cls.get_instance()
+        if cls.IDPROP_NAME not in addon_prefs:
             return False
-        self._set_values(addon_prefs[self.IDPROP_NAME])
+        cls.keymap_items_set_attributes(addon_prefs[cls.IDPROP_NAME])
         return True
 
-    def keymaps_restore(self):
+    @classmethod
+    def keymap_items_restore(cls):
         """キーマップを初期値に戻す"""
-        self._set_values(self._default_keymap_item_values, True)
+        cls.keymap_items_set_attributes(cls.__default_keymap_item_values, True)
 
     # classes -------------------------------------------------------
-    def add_classes(self, types):
+    @classmethod
+    def addon_classes_add(cls, types):
         for t in types:
             if not isinstance(t, str):
                 t = t.__name__
-            self.classes.append(t)
+            cls.addon_classes.append(t)
 
-    def remove_classes(self):
-        for class_name in self.classes:
+    @classmethod
+    def addon_classes_remove(cls):
+        for class_name in cls.addon_classes:
             if hasattr(_bpy.types, class_name):
-                cls = getattr(_bpy.types, class_name)
-                _bpy.utils.unregister_class(cls)
-        self.classes.clear()
+                cls_ = getattr(_bpy.types, class_name)
+                _bpy.utils.unregister_class(cls_)
+        cls.addon_classes.clear()
 
     # attributes ----------------------------------------------------
-    def add_attributes(self, attributes):
-        self.attributes.extend(attributes)
+    @classmethod
+    def addon_attributes_add(cls, attributes):
+        cls.addon_attributes.extend(attributes)
 
-    def remove_attributes(self):
-        for class_name, attr in self.attributes:
-            cls = getattr(_bpy.types, class_name, None)
-            if cls:
-                if hasattr(cls, attr):
-                    delattr(cls, attr)
-        self.attributes.clear()
+    @classmethod
+    def addon_attributes_remove(cls):
+        for class_name, attr in cls.addon_attributes:
+            cls_ = getattr(_bpy.types, class_name, None)
+            if cls_:
+                if hasattr(cls_, attr):
+                    delattr(cls_, attr)
+        cls.addon_attributes.clear()
 
     # draw ----------------------------------------------------------
 
-    _EVENT_TYPES = set()
-    _EVENT_TYPE_MAP = {}
-    _EVENT_TYPE_MAP_EXTRA = {}
+    __EVENT_TYPES = set()
+    __EVENT_TYPE_MAP = {}
+    __EVENT_TYPE_MAP_EXTRA = {}
 
-    _INDENTPX = 16
+    __INDENTPX = 16
 
-    def _indented_layout(self, layout, level):
+    def __indented_layout(self, layout, level):
         if level == 0:
             # Tweak so that a percentage of 0 won't split by half
             level = 0.0001
-        indent = level * self._INDENTPX / _bpy.context.region.width
+        indent = level * self.__INDENTPX / _bpy.context.region.width
 
         split = layout.split(percentage=indent)
         col = split.column()
         col = split.column()
         return col
 
-    def _draw_entry(self, display_keymaps, entry, col, level=0):
+    def __draw_entry(self, display_keymaps, entry, col, level=0):
         idname, spaceid, regionid, children = entry
 
         for km, km_items in display_keymaps:
             if (km.name == idname and km.space_type == spaceid and
                         km.region_type == regionid):
-                self._draw_km(display_keymaps, km, km_items, children, col,
-                              level)
+                self.__draw_km(display_keymaps, km, km_items, children, col,
+                               level)
 
-    def _draw_km(self, display_keymaps, km, km_items, children, layout,
-                 level):
+    def __draw_km(self, display_keymaps, km, km_items, children, layout,
+                  level):
         from _bpy.app.translations import pgettext_iface as iface_
         from _bpy.app.translations import contexts as i18n_contexts
 
@@ -816,7 +810,7 @@ class AddonRegisterInfo:
 
         layout.context_pointer_set("keymap", km)
 
-        col = self._indented_layout(layout, level)
+        col = self.__indented_layout(layout, level)
 
         row = col.row(align=True)
         row.prop(km, "show_expanded_children", text="", emboss=False)
@@ -837,7 +831,7 @@ class AddonRegisterInfo:
             if children:
                 # Put the Parent key map's entries in a 'global' sub-category
                 # equal in hierarchy to the other children categories
-                subcol = self._indented_layout(col, level + 1)
+                subcol = self.__indented_layout(col, level + 1)
                 subrow = subcol.row(align=True)
                 subrow.prop(km, "show_expanded_items", text="", emboss=False)
                 subrow.label(text=iface_("%s (Global)") % km.name,
@@ -850,20 +844,20 @@ class AddonRegisterInfo:
                 kmi_level = level + 3 if children else level + 1
                 # for kmi in km.keymap_items:
                 for kmi in km_items:
-                    self._draw_kmi(km, kmi, col, kmi_level)
+                    self.__draw_kmi(km, kmi, col, kmi_level)
 
             # Child key maps
             if children:
                 for entry in children:
-                    self._draw_entry(display_keymaps, entry, col,
-                                     level + 1)
+                    self.__draw_entry(display_keymaps, entry, col,
+                                      level + 1)
 
             col.separator()
 
-    def _draw_kmi(self, km, kmi, layout, level):
+    def __draw_kmi(self, km, kmi, layout, level):
         map_type = kmi.map_type
 
-        col = self._indented_layout(layout, level)
+        col = self.__indented_layout(layout, level)
 
         if kmi.show_expanded:
             col = col.column(align=True)
@@ -905,8 +899,8 @@ class AddonRegisterInfo:
         sub = row.row()
         op = sub.operator("wm.ari_keymap_item_remove", text="", icon='X')
         op.item_id = kmi.id
-        if self.lock_default:
-            if (km.name, kmi.id) in self.default_keymap_items:
+        if self.__lock_default_keymap_items:
+            if (km.name, kmi.id) in self.__default_keymap_items:
                 sub.enabled = False
 
         # Expanded, additional event settings
@@ -947,11 +941,11 @@ class AddonRegisterInfo:
             # Operator properties
             box.template_keymap_item_properties(kmi)
 
-    def _draw_filtered(self, display_keymaps, filter_type, filter_text,
-                       layout):
-        _EVENT_TYPES = self._EVENT_TYPES
-        _EVENT_TYPE_MAP = self._EVENT_TYPE_MAP
-        _EVENT_TYPE_MAP_EXTRA = self._EVENT_TYPE_MAP_EXTRA
+    def __draw_filtered(self, display_keymaps, filter_type, filter_text,
+                        layout):
+        _EVENT_TYPES = self.__EVENT_TYPES
+        _EVENT_TYPE_MAP = self.__EVENT_TYPE_MAP
+        _EVENT_TYPE_MAP_EXTRA = self.__EVENT_TYPE_MAP_EXTRA
 
         if filter_type == 'NAME':
             def filter_func(kmi):
@@ -1072,16 +1066,16 @@ class AddonRegisterInfo:
                 row.label(text=km.name, icon='DOT')
 
                 for kmi in filtered_items:
-                    self._draw_kmi(km, kmi, col, 1)
+                    self.__draw_kmi(km, kmi, col, 1)
 
         return True
 
-    def _draw_hierarchy(self, display_keymaps, layout):
+    def __draw_hierarchy(self, display_keymaps, layout):
         from bpy_extras import keyconfig_utils
         for entry in keyconfig_utils.KM_HIERARCHY:
-            self._draw_entry(display_keymaps, entry, layout)
+            self.__draw_entry(display_keymaps, entry, layout)
 
-    def _draw_classes(self, context, layout, box=True):
+    def __draw_classes(self, context, layout, box=True):
         if box:
             col = layout.column().box()
         else:
@@ -1112,7 +1106,7 @@ class AddonRegisterInfo:
         #     bpy.types.NodeTree,
         # ]
         classes = []
-        for class_name in self.classes:
+        for class_name in self.addon_classes:
             if hasattr(_bpy.types, class_name):
                 t = getattr(_bpy.types, class_name)
                 for base in t.__bases__:
@@ -1147,20 +1141,20 @@ class AddonRegisterInfo:
                     col2.separate()
                     col3.separate()
 
-    def _draw_attributes(self, context, layout, box=True):
+    def __draw_attributes(self, context, layout, box=True):
         if box:
             col = layout.column().box()
         else:
             col = layout.column()
 
-        attributes = self.attributes[:]
+        attributes = self.addon_attributes[:]
         attributes.sort(key=lambda x: (x[0], x[1]))
 
         for class_name, attr in attributes:
             col.label(class_name + '.' + attr)
 
-    def _draw_keymaps(self, context, layout, hierarchy=False, box=True):
-        wm_prop = self._get_wm_prop()
+    def __draw_keymaps(self, context, layout, hierarchy=False, box=True):
+        wm_prop = self.__get_wm_prop()
         addon_prefs = self.get_instance()
         space_pref = context.space_data
 
@@ -1203,15 +1197,15 @@ class AddonRegisterInfo:
             filter_type = space_pref.filter_type
             filter_text = space_pref.filter_text.strip()
         else:
-            filter_type = getattr(wm_prop, 'filter_type')
-            filter_text = getattr(wm_prop, 'filter_text')
+            filter_type = wm_prop.filter_type
+            filter_text = wm_prop.filter_text
 
         if filter_text or not hierarchy:
             filter_text = filter_text.lower()
-            ok = self._draw_filtered(display_keymaps, filter_type,
-                                     filter_text, col)
+            ok = self.__draw_filtered(display_keymaps, filter_type,
+                                      filter_text, col)
         else:
-            self._draw_hierarchy(display_keymaps, col)
+            self.__draw_hierarchy(display_keymaps, col)
             ok = True
 
         colsub = col.split(percentage=0.2).column()
@@ -1232,8 +1226,8 @@ class AddonRegisterInfo:
             rowsubsub.prop(wm_prop, 'filter_text', text="", icon='VIEWZOOM')
 
         # Write / Restore
-        default_km = self._default_keymap_item_values
-        current_km = self.get_current_keymap_item_values()
+        default_km = self.__default_keymap_item_values
+        current_km = self.keymap_items_get_attributes()
         if self.IDPROP_NAME in addon_prefs:
             def idprop_to_py(prop):
                 if isinstance(prop, list):
@@ -1263,8 +1257,7 @@ class AddonRegisterInfo:
             subcolsplitrow_sub.enabled = False
         subcolsplitrow_sub.operator('wm.ari_keymaps_restore', text='Restore')
 
-    def draw(self, context, layout, hierarchy=False, box=True,
-             lock_default=None):
+    def draw(self, context, layout, hierarchy=False, box=True):
         """キーマップアイテムの一覧を描画。
         :param context: _bpy.types.Context
         :param layout: _bpy.types.UILayout
@@ -1272,21 +1265,16 @@ class AddonRegisterInfo:
         :type hierarchy: bool
         :param box: 展開時にBoxで囲む
         :type box: bool
-        :param lock_default: 真ならKeyMapItemはXボタンを無効にする
-        :type lock_default: bool
         """
         addon_prefs = self.get_instance()
-
-        if lock_default is not None:
-            self.lock_default = lock_default
 
         column = layout.column()
         column.context_pointer_set('addon_preferences', addon_prefs)
 
-        wm_prop = self._get_wm_prop()
-        show_keymaps = self.show_keymaps
-        show_classes = self.show_classes
-        show_attributes = self.show_attributes
+        wm_prop = self.__get_wm_prop()
+        show_keymaps = wm_prop.show_keymaps
+        show_classes = wm_prop.show_classes
+        show_attributes = wm_prop.show_attributes
 
         row = column.row()
         split = row.split()
@@ -1301,23 +1289,23 @@ class AddonRegisterInfo:
         sub = split.row()
         icon = 'TRIA_DOWN' if show_classes else 'TRIA_RIGHT'
         sub.prop(wm_prop, 'show_classes', text='', icon=icon, emboss=False)
-        text = '{} Classes'.format(len(self.classes))
+        text = '{} Classes'.format(len(self.addon_classes))
         sub.label(text)
 
-        if self.attributes:
+        if self.addon_attributes:
             sub = split.row()
             icon = 'TRIA_DOWN' if show_attributes else 'TRIA_RIGHT'
             sub.prop(wm_prop, 'show_attributes', text='', icon=icon,
                      emboss=False)
-            text = '{} Attributes'.format(len(self.attributes))
+            text = '{} Attributes'.format(len(self.addon_attributes))
             sub.label(text)
 
         if show_keymaps:
-            self._draw_keymaps(context, column, hierarchy, box)
-        if show_classes and self.classes:
-            self._draw_classes(context, layout, box)
-        if show_attributes and self.attributes:
-            self._draw_attributes(context, layout, box)
+            self.__draw_keymaps(context, column, hierarchy, box)
+        if show_classes and self.addon_classes:
+            self.__draw_classes(context, layout, box)
+        if show_attributes and self.addon_attributes:
+            self.__draw_attributes(context, layout, box)
 
     # operator ------------------------------------------------------
     class _Helper:
@@ -1431,7 +1419,7 @@ class AddonRegisterInfo:
             else:
                 kmi = km.keymap_items.new(
                     idname='none', type='A', value='PRESS')
-                ari.add_keymap_item(kmi)
+                ari.keymap_item_add(kmi)
             context.area.tag_redraw()
             return {'FINISHED'}
 
@@ -1452,7 +1440,7 @@ class AddonRegisterInfo:
             ari = self.get_addon_register_info(context)
             for kmi in context.keymap.keymap_items:
                 if kmi.id == self.item_id:
-                    ari.remove_keymap_item(kmi)
+                    ari.keymap_item_remove(kmi)
                     return {'FINISHED'}
             context.area.tag_redraw()
             return {'CANCELLED'}
@@ -1466,7 +1454,7 @@ class AddonRegisterInfo:
         def execute(self, context):
             addon_prefs = context.addon_preferences
             ari = self.get_addon_register_info(context)
-            value = ari.get_current_keymap_item_values()
+            value = ari.keymap_items_get_attributes()
             addon_prefs[ari.IDPROP_NAME] = value
             return {'FINISHED'}
 
@@ -1478,7 +1466,7 @@ class AddonRegisterInfo:
         def execute(self, context):
             addon_prefs = context.addon_preferences
             ari = self.get_addon_register_info(context)
-            ari.keymaps_restore()
+            ari.keymap_items_restore()
             if ari.IDPROP_NAME in addon_prefs:
                 del addon_prefs[ari.IDPROP_NAME]
             context.area.tag_redraw()
@@ -1620,9 +1608,9 @@ class AddonRegisterInfo:
 
     _AddonRegisterInformationUI.__name__ = 'AddonRegisterInformationUI'
 
-    # addon_utils.py ------------------------------------------------
-    def module_register(self, func, lock_default_keymaps=None):
-        """アドオンのregister関数にデコレータとして使用する"""
+    # wrap ----------------------------------------------------------
+    @classmethod
+    def module_register(cls, func, instance=None):
         import functools
 
         def get_km_items():
@@ -1640,161 +1628,137 @@ class AddonRegisterInfo:
         def _register():
             items_pre = get_km_items()
             bpy_types_pre = set(dir(_bpy.types))
-            if self.auto_register_attributes:
-                attributes_pre = {
-                    class_name: dir(getattr(_bpy.types, class_name))
-                    for class_name in dir(_bpy.types)}
 
             func()
 
             items_post = get_km_items()
             bpy_types_post = set(dir(_bpy.types))
-            if self.auto_register_attributes:
-                attributes_post = {
-                    class_name: dir(getattr(_bpy.types, class_name))
-                    for class_name in dir(_bpy.types)}
 
             keymap_items = [item for item in items_post
                             if item not in items_pre]
 
             new_type_names = []
-            prefs_class = None
+            addon_prefs_class = None
             for attr in bpy_types_post:
                 if attr in bpy_types_pre:
                     continue
                 new_type_names.append(attr)
-                cls = getattr(_bpy.types, attr)
-                if self.addon_preferences_name:
-                    if attr == self.addon_preferences_name:
-                        prefs_class = cls
-                else:
-                    if issubclass(cls, _bpy.types.AddonPreferences):
-                        prefs_class = cls
+                c = getattr(_bpy.types, attr)
+                if issubclass(c, _bpy.types.AddonPreferences):
+                    addon_prefs_class = c
 
-            new_attributes = []
-            if self.auto_register_attributes:
-                if attributes_pre == attributes_post:
-                    pass
-                else:
-                    for class_name, attrs in attributes_post.items():
-                        if class_name not in attributes_pre:
-                            continue
-                        attrs_pre = attributes_pre[class_name]
-                        if attrs == attrs_pre:
-                            continue
-                        for attr in attrs:
-                            if attr not in attrs_pre:
-                                new_attributes.append((class_name, attr))
+            if instance:  # addon_utils.py用
+                instance.register()
 
-            self.register_classes()
+                draw_orig = None
+                if addon_prefs_class:
+                    if hasattr(addon_prefs_class, 'draw'):
+                        def draw(self, context):
+                            draw._draw(self, context)
+                            instance.draw(context, layout=self.layout)
+
+                        draw_orig = addon_prefs_class.draw
+                    else:
+                        def draw(self, context):
+                            instance.draw(context, layout=self.layout)
+                    addon_prefs_class.draw = draw
+
+                else:
+                    def draw(self, context):
+                        instance.draw(context, layout=self.layout)
+
+                    name = instance.bl_idname.replace('.', '_').upper()
+                    addon_prefs_class = type(
+                        'AddonPreferences' + name,
+                        (_bpy.types.AddonPreferences,),
+                        {'bl_idname': instance.bl_idname,
+                         'register_info': instance,
+                         'draw': draw,
+                         'is_temporary_class': True}
+                    )
+                    _bpy.utils.register_class(addon_prefs_class)
+                draw._draw = draw_orig
+
+                instance.__class__.addon_preferences_class = \
+                    addon_prefs_class
 
             prop = _bpy.props.PointerProperty(
-                        type=_bpy.types.AddonRegisterInformationUI)
+                type=_bpy.types.AddonRegisterInformationUI)
             setattr(_bpy.types.AddonRegisterInformation,
-                    self.module.replace('.', '_'), prop)
+                    cls.bl_idname.replace('.', '_'), prop)
 
-            register_info = self
-            register_info._do_unregister_addon_preferences_class = False
-
-            draw_orig = None
-            if prefs_class:
-                prefs_class.register_info = register_info
-                if hasattr(prefs_class, 'draw'):
-                    def draw(self, context):
-                        draw._draw(self, context)
-                        register_info.draw(context, layout=self.layout,
-                                           lock_default=lock_default_keymaps)
-                    draw_orig = prefs_class.draw
-                else:
-                    def draw(self, context):
-                        register_info.draw(context, layout=self.layout,
-                                           lock_default=lock_default_keymaps)
-                prefs_class.draw = draw
-
+            if instance:
+                instance.keymap_items_add(keymap_items)
+                instance.addon_classes_add(new_type_names)
             else:
-                def draw(self, context):
-                    register_info.draw(context, layout=self.layout,
-                                       lock_default=lock_default_keymaps)
-
-                name = register_info.module.replace('.', '_').upper()
-                prefs_class = type(
-                    'AddonPreferences' + name,
-                    (_bpy.types.AddonPreferences,),
-                    {'bl_idname': register_info.module,
-                     'register_info': register_info,
-                     'draw': draw}
-                )
-                _bpy.utils.register_class(prefs_class)
-                register_info._do_unregister_addon_prefs = True
-            draw._draw = draw_orig
-
-            register_info._addon_preferences_class = prefs_class
-
-            self.add_keymap_items(keymap_items)
-            self.add_classes(new_type_names)
-            self.add_attributes(new_attributes)
+                cls.keymap_items_add(keymap_items)
+                cls.addon_classes_add(new_type_names)
 
         _register._register = func
+
         return _register
 
-    def module_register_ex(self, lock_default_keymaps=None):
+    @classmethod
+    def module_register_ex(cls, register_info=None):
         import functools
-        return functools.partial(
-            self.register, lock_default=lock_default_keymaps)
+        return functools.partial(cls.module_register,
+                                 register_info=register_info)
 
-    def module_unregister(self, func, only_added_keymaps=False, classes=False,
-                          attributes=False):
-        """アドオンのunregister関数にデコレータとして使用する"""
+    @classmethod
+    def module_unregister(cls, func, unregister_classes=False,
+                          instance=None):
         import functools
 
         @functools.wraps(func)
         def _unregister():
-            prefs_class = self._addon_preferences_class
-
-            if self._do_unregister_addon_preferences_class:
-                _bpy.utils.unregister_class(prefs_class)
+            if instance:
+                prefs_class = instance.__class__.addon_preferences_class
             else:
-                if prefs_class.draw._draw:
-                    prefs_class.draw = prefs_class.draw._draw
-                else:
-                    delattr(prefs_class, 'draw')
+                prefs_class = cls
 
             delattr(_bpy.types.AddonRegisterInformation,
-                    self.module.replace('.', '_'))
+                    prefs_class.bl_idname.replace('.', '_'))
 
-            ri = prefs_class.register_info
-            ri.remove_keymap_items(remove_only_added=only_added_keymaps)
-            ri.unregister_classes()
-            delattr(prefs_class, 'register_info')
+            if instance:
+                instance.keymap_items_remove(remove_only_added=True)
+                if unregister_classes:
+                    instance.addon_classes_remove()
+                else:
+                    instance.addon_classes.clear()
+            else:
+                prefs_class.keymap_items_remove()
+                if unregister_classes:
+                    prefs_class.addon_classes_remove()
+                else:
+                    prefs_class.addon_classes.clear()
 
-            if classes:
-                self.remove_classes()
-            else:
-                self.classes.clear()
-            if attributes:
-                self.remove_attributes()
-            else:
-                self.attributes.clear()
+            if instance:
+                if getattr(prefs_class, 'is_temporary_class', None) is True:
+                    _bpy.utils.unregister_class(prefs_class)
+                else:
+                    if prefs_class.draw._draw:
+                        prefs_class.draw = prefs_class.draw._draw
+                    else:
+                        delattr(prefs_class, 'draw')
+
+                instance.unregister()
 
             func()
 
         _unregister._unregister = func
         return _unregister
 
-    def module_unregister_ex(self, only_added_keymaps=False, classes=False,
-                             attributes=False):
-        """アドオンのunregister関数にデコレータとして使用する"""
+    @classmethod
+    def module_usregister_ex(cls, unregister_classes=False,
+                             instance=None):
         import functools
-        return functools.partial(
-            self.unregister, only_added_keymaps=only_added_keymaps,
-            classes=classes, attributes=attributes)
+        return functools.partial(cls.module_unregister,
+                                 unregister_classes=unregister_classes,
+                                 instance=instance)
 
     @classmethod
     def wrap_module(cls, module):
-        """addon_utils.pyの改造に用いる。モジュール読込後、register前にこれを
-        実行する。
-        """
-
+        """addon_utils.py用"""
         if getattr(module, 'bl_info', {}).get('name') in cls.IGRORE_ADDONS:
             return
         if not (hasattr(module, 'register') and hasattr(module, 'unregister')):
@@ -1802,8 +1766,9 @@ class AddonRegisterInfo:
         if hasattr(module.register, '_register'):
             return
 
-        ri = cls(module.__name__)
-        module.register = ri.register(
-            module.register, lock_default_keymaps=True)
-        module.unregister = ri.unregister(
-            module.unregister, only_added_keymaps=True)
+        new_cls = cls.derive(module.__name__, lock_default_keymap_items=True)
+        instance = new_cls()
+        module.register = new_cls.module_register(module.register,
+                                                  instance=instance)
+        module.unregister = new_cls.module_unregister(module.unregister,
+                                                      instance=instance)

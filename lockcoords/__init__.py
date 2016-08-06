@@ -801,6 +801,7 @@ def draw_header(self, context):
 ###############################################################################
 class LockCoordsPreferences(
         utils.AddonPreferences,
+        utils.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -820,10 +821,7 @@ classes = [
 ]
 
 
-ari = utils.AddonRegisterInfo(__name__, 'LockCoordsPreferences')
-
-
-@ari.module_register
+@LockCoordsPreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -853,7 +851,7 @@ def register():
                 pass
 
 
-@ari.module_unregister
+@LockCoordsPreferences.module_unregister
 def unregister():
     try:
         delattr(PREFS_LOCATION[0], 'lock_coords')

@@ -732,6 +732,7 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 class MouseGesturePreferences(
         utils.AddonPreferences,
+        utils.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -796,6 +797,8 @@ class MouseGesturePreferences(
         op = sub.operator('wm.mouse_gesture_stubs', text='Add New',
                           icon='ZOOMIN')
         op.function = 'group_add'
+
+        super().draw(context, self.layout)
 
 
 ###############################################################################
@@ -1436,10 +1439,7 @@ def load_handler(dummy):
     prefs.ensure_operator_args()
 
 
-ari = utils.AddonRegisterInfo(__name__, 'MouseGesturePreferences')
-
-
-@ari.module_register
+@MouseGesturePreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -1468,7 +1468,7 @@ def register():
     bpy.app.handlers.load_post.append(load_handler)
 
 
-@ari.module_unregister
+@MouseGesturePreferences.module_unregister
 def unregister():
     for km, kmi in blender_keymaps:
         kmi.value = 'PRESS'

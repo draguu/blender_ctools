@@ -66,6 +66,7 @@ class SearchMenuProperty(bpy.types.PropertyGroup):
 
 class SearchMenuPreferences(
         utils.AddonPreferences,
+        utils.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
 
@@ -79,6 +80,8 @@ class SearchMenuPreferences(
 
         split.column()
         split.column()
+
+        super().draw(context, self.layout)
 
 
 def get_operator_type(pyop):
@@ -274,10 +277,7 @@ classes = [
 ]
 
 
-ari = utils.AddonRegisterInfo(__name__, 'SearchMenuPreferences')
-
-
-@ari.module_register
+@SearchMenuPreferences.module_register
 def register():
 
     for cls in classes:
@@ -287,12 +287,12 @@ def register():
 
     kc = wm.keyconfigs.addon
     if kc:
-        km = ari.get_keymap('Window')
+        km = SearchMenuPreferences.get_keymap('Window')
         kmi = km.keymap_items.new(SearchMenu.bl_idname, 'SPACE', 'PRESS',
                                   alt=True)
 
 
-@ari.module_unregister
+@SearchMenuPreferences.module_unregister
 def unregister():
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
