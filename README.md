@@ -53,7 +53,10 @@
 ![Image](images/splashscreen.jpg)
 
 ## Align Tools
-頂点やオブジェクト等を整列する
+頂点やオブジェクト等を整列する。  
+
+## Emulate Numpad
+マウス中ボタンと特定キーの組み合わせで、テンキーに割り当てられたオペレーターを実行する。  
 
 ## その他
 ### patch/ui_layout_box.patch
