@@ -289,10 +289,6 @@ class SCREEN_OT_emulate_numpad(bpy.types.Operator):
     def __init__(self):
         self.event_type = ''
 
-    @classmethod
-    def draw_callback(cls, context):
-        pass
-
     def modal(self, context, event):
         prefs = EmulateNumpadPreferences.get_instance()
         ret = {'RUNNING_MODAL'}
@@ -367,8 +363,6 @@ class SCREEN_OT_emulate_numpad(bpy.types.Operator):
         context.window.cursor_modal_restore()
 
     def invoke(self, context, event):
-        prefs = EmulateNumpadPreferences.get_instance()
-
         self.event_type = event.type
         self.mouse_x = event.mouse_x
         self.mouse_y = event.mouse_y
@@ -376,6 +370,21 @@ class SCREEN_OT_emulate_numpad(bpy.types.Operator):
 
         self.keymaps = [km for km in listvalidkeys.context_keymaps(context)
                         if listvalidkeys.keymap_poll(context, km)]
+
+        # numpadを使うオペレータが無いなら終了。
+        found = False
+        for km in self.keymaps:
+            for kmi in km.keymap_items:
+                if kmi.active:
+                    if kmi.type.startswith('NUMPAD_'):
+                        op, kwargs = get_operator_from_keymap_item(kmi)
+                        if op and op.poll():
+                            found = True
+                            break
+            if found:
+                break
+        if not found:
+            return {'CANCELLED', 'PASS_THROUGH'}
 
         # view2d.scroller_activateを中ボタンで呼び出した場合、
         # すぐ反応する必要があるのでここで処理する
