@@ -87,14 +87,14 @@ keypad_alt = [
     ('kp4', 'Q', 'NUMPAD_4', '4'),
     ('kp5', 'W', 'NUMPAD_5', '5'),
     ('kp6', 'E', 'NUMPAD_6', '6'),
-    ('kp7', '1', 'NUMPAD_7', '7'),
-    ('kp8', '2', 'NUMPAD_8', '8'),
-    ('kp9', '3', 'NUMPAD_9', '9'),
+    ('kp7', 'ONE', 'NUMPAD_7', '7'),
+    ('kp8', 'TWO', 'NUMPAD_8', '8'),
+    ('kp9', 'THREE', 'NUMPAD_9', '9'),
     ('kpdl', 'C', 'NUMPAD_PERIOD', '.'),
     ('kpad', 'V', 'NUMPAD_PLUS', '+'),
     ('kpsu', 'F', 'NUMPAD_MINUS', '-'),
     ('kpmu', 'R', 'NUMPAD_ASTERIX', '*'),
-    ('kpdv', '4', 'NUMPAD_SLASH', '/'),
+    ('kpdv', 'FOUR', 'NUMPAD_SLASH', '/'),
     ('kpen', 'SPACE', 'NUMPAD_ENTER', 'Enter'),
 ]
 
