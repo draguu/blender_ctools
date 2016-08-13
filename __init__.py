@@ -63,6 +63,7 @@ sub_module_names = [
     # 'floating_window',
     'splashscreen',
     'aligntools',
+    'emulatenumpad',
 ]
 
 
