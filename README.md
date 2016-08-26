@@ -49,7 +49,7 @@
 ## Splash Screen
 起動時のスプラッシュスクリーンを置換する。  
 履歴一覧はダブルクリックでファイルをロードする。画像の変更と、画像クリックで指定ディレクトリの音声ファイルを再生する機能あり。  
-※PyQt5のインストールが必要。  
+※ PyQt5のインストールが必要。  
 ![Image](images/splashscreen.jpg)
 
 ## Align Tools
@@ -57,6 +57,12 @@
 
 ## Emulate Numpad
 マウス中ボタンと特定キーの組み合わせで、テンキーに割り当てられたオペレーターを実行する。  
+
+## Make UV Grid
+単純なUV Grid 画像を作成する。  
+※ [Pillow](https://python-pillow.org)のインストールが必要。  
+![Image](images/uvgrid.jpg)
+
 
 ## その他
 ### patch/ui_layout_box.patch

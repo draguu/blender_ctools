@@ -64,6 +64,7 @@ sub_module_names = [
     'splashscreen',
     'aligntools',
     'emulatenumpad',
+    'uvgrid',
 ]
 
 

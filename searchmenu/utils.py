@@ -1257,7 +1257,7 @@ class AddonRegisterInfo:
             subcolsplitrow_sub.enabled = False
         subcolsplitrow_sub.operator('wm.ari_keymaps_restore', text='Restore')
 
-    def draw(self, context, layout, hierarchy=False, box=True):
+    def draw(self, context, layout=None, hierarchy=False, box=True):
         """キーマップアイテムの一覧を描画。
         :param context: _bpy.types.Context
         :param layout: _bpy.types.UILayout
@@ -1266,6 +1266,8 @@ class AddonRegisterInfo:
         :param box: 展開時にBoxで囲む
         :type box: bool
         """
+        if not layout:
+            layout = self.layout
         addon_prefs = self.get_instance()
 
         column = layout.column()
