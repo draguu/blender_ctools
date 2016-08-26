@@ -445,7 +445,7 @@ class OperatorUVGrid(bpy.types.Operator):
                 if 0:
                     if not image.has_data:
                         image.source = 'GENERATED'
-                        context.space_data.image = image  # 画面を更新する為
+                        space_image.image = image  # 画面を更新する為
                     generate = False
                 generate= not image.has_data
             else:
@@ -455,17 +455,24 @@ class OperatorUVGrid(bpy.types.Operator):
         return generate
 
     def verify_image(self, context):
+        if context.area.type != 'IMAGE_EDITOR':
+            return bpy.data.images.new('UV Grid', 512, 512, True)
+
         space_image = context.space_data
         """:type: bpy.types.SpaceImageEditor"""
         image = space_image.image
         if self.test_generate(context):
             image = bpy.data.images.new('UV Grid', 512, 512, True)
             """:type: bpy.types.Image"""
-            context.space_data.image = image
+            space_image.image = image
         return image
 
     def draw(self, context):
         layout = self.layout
+
+        if context.area.type != 'IMAGE_EDITOR':
+            layout.label('Not Image Editor', icon='ERROR')
+            return
 
         space_image = context.space_data
         """:type: bpy.types.SpaceImageEditor"""
@@ -499,6 +506,9 @@ class OperatorUVGrid(bpy.types.Operator):
         col.label(text, icon='INFO')
 
     def execute(self, context):
+        if context.area.type != 'IMAGE_EDITOR':
+            return {'CANCELLED'}
+
         win = context.window
         win.cursor_modal_set('WAIT')
 
