@@ -44,7 +44,7 @@ except NameError:
     from . import utils
 
 
-DEFAULT_PATTERN = 'CHECKER'  # 'CHECKER', 'CHECKER_DOT', 'FULL'
+DEFAULT_PATTERN = 'CHECKER'  # 'CHECKER', 'CHECKER_CIRCLE', 'FULL'
 
 
 def draw_grid(image, color, origin, offset, line_width, color_image=None,
