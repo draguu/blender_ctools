@@ -34,11 +34,11 @@ from collections import OrderedDict
 import difflib
 import hashlib
 import importlib
-import inspect
 import os
 import pathlib
 import platform
 import shutil
+import sys
 import traceback
 import tempfile
 import urllib.request
@@ -161,16 +161,19 @@ def gen_fake_modules():
 fake_modules = gen_fake_modules()
 
 
-# reload
 try:
+    # reload ?
     _ = NAME
-    for fake_mod in fake_modules.values():
+    # reloaded !
+    for _fake_mod in fake_modules.values():
         try:
-            mod = importlib.import_module(fake_mod.__name__)
-            importlib.reload(mod)
+            if _fake_mod.__name__ in sys.modules:
+                _mod = importlib.import_module(_fake_mod.__name__)
+                importlib.reload(_mod)
         except:
             traceback.print_exc()
 except NameError:
+    # load first
     pass
 
 
@@ -193,11 +196,12 @@ class RegionRulerPreferences(
 """
 
 
-def _get_pref_class(mod):
-    for obj in vars(mod).values():
-        if inspect.isclass(obj) and issubclass(obj, bpy.types.PropertyGroup):
-            if hasattr(obj, 'bl_idname') and obj.bl_idname == mod.__name__:
-                return obj
+# 未使用
+# def _get_pref_class(mod):
+#     for obj in vars(mod).values():
+#         if inspect.isclass(obj) and issubclass(obj, bpy.types.PropertyGroup):
+#             if hasattr(obj, 'bl_idname') and obj.bl_idname == mod.__name__:
+#                 return obj
 
 
 def get_dynamic_property():
@@ -363,32 +367,35 @@ class CToolsPreferences(_CToolsPreferences, bpy.types.AddonPreferences):
         sub.alignment = 'RIGHT'
         sub.prop(self, 'align_box_draw')
 
+    @classmethod
+    def init_attributes(cls):
+        for name, fake_mod in fake_modules.items():
+            info = fake_mod.bl_info
 
-for name, fake_mod in fake_modules.items():
-    info = fake_mod.bl_info
+            def gen_update(fake_mod):
+                def update(self, context):
+                    name = fake_mod.__name__.split('.')[-1]
+                    try:
+                        mod = importlib.import_module(fake_mod.__name__)
+                        if getattr(self, 'use_' + name):
+                            register_submodule(mod)
+                        else:
+                            unregister_submodule(mod)
+                    except:
+                        # setattr(self, 'use_' + name, False)
+                        traceback.print_exc()
+                return update
 
-    def gen_update(fake_mod):
-        def update(self, context):
-            name = fake_mod.__name__.split('.')[-1]
-            try:
-                mod = importlib.import_module(fake_mod.__name__)
-                if getattr(self, 'use_' + name):
-                    register_submodule(mod)
-                else:
-                    unregister_submodule(mod)
-            except:
-                # setattr(self, 'use_' + name, False)
-                traceback.print_exc()
-        return update
+            prop = bpy.props.BoolProperty(
+                name=info['name'],
+                description=info.get('description', '').rstrip('.'),
+                update=gen_update(fake_mod),
+            )
+            setattr(CToolsPreferences, 'use_' + name, prop)
+            prop = bpy.props.BoolProperty()
+            setattr(CToolsPreferences, 'show_expanded_' + name, prop)
 
-    prop = bpy.props.BoolProperty(
-        name=info['name'],
-        description=info.get('description', '').rstrip('.'),
-        update=gen_update(fake_mod),
-    )
-    setattr(CToolsPreferences, 'use_' + name, prop)
-    prop = bpy.props.BoolProperty()
-    setattr(CToolsPreferences, 'show_expanded_' + name, prop)
+CToolsPreferences.init_attributes()
 
 
 class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
