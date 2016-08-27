@@ -114,7 +114,7 @@ class AlignToolsPreferences(
     def update_keymap_items(self, context=None):
         items = []
         for km_name, kmi_id in self.keymap_items:
-            km = ari.get_keymap(km_name)
+            km = self.get_keymap(km_name)
             for kmi in km.keymap_items:
                 if kmi.id == kmi_id:
                     items.append(kmi)
