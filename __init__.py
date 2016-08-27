@@ -68,6 +68,10 @@ sub_module_names = [
 ]
 
 
+# utils.pyの方でも定義されている
+DYNAMIC_PROPERTY_ATTR = 'dynamic_property'
+
+
 def fake_module(mod_name, mod_path, speedy=True, force_support=None):
     """scripts/modules/addon_utils.pyのmodule_refresh関数の中からコピペ改変"""
 
@@ -196,6 +200,14 @@ def _get_pref_class(mod):
                 return obj
 
 
+def get_dynamic_property():
+    addons = bpy.context.user_preferences.addons
+    if __name__ not in addons:  # wm.read_factory_settings()
+        return None
+    prefs = addons[__name__].preferences
+    return getattr(prefs, DYNAMIC_PROPERTY_ATTR)
+
+
 def get_addon_preferences(name=''):
     """
     :param name: 指定するとctoolsではなく、そのサブモジュールの物を返す
@@ -204,11 +216,10 @@ def get_addon_preferences(name=''):
     addons = bpy.context.user_preferences.addons
     if __name__ not in addons:  # wm.read_factory_settings()
         return None
-    prefs = addons[__name__].preferences
     if name:
-        return getattr(prefs, name, None)
+        return getattr(get_dynamic_property(), name, None)
     else:
-        return prefs
+        return addons[__name__].preferences
 
 
 def register_submodule(mod):
@@ -226,23 +237,28 @@ def unregister_submodule(mod):
         mod.unregister()
         mod.__addon_enabled__ = False
 
-        prefs = get_addon_preferences()
-        name = mod.__name__.split('.')[-1]
-        if hasattr(CToolsPreferences, name):
-            delattr(CToolsPreferences, name)
-            if prefs:
-                bpy.utils.unregister_class(CToolsPreferences)
-                bpy.utils.register_class(CToolsPreferences)
-                if name in prefs:
-                    del prefs[name]
-
 
 def test_platform():
     return (platform.platform().split('-')[0].lower()
             not in {'darwin', 'windows'})
 
 
-class CToolsPreferences(bpy.types.AddonPreferences):
+class CToolsDynamicProperty(bpy.types.PropertyGroup):
+    """
+    bpy.types.AddonPreferencesを継承したクラスへ動的に属性を追加しても
+    インスタンスへは反映されない為、これ以下に属性を追加する。
+    """
+
+
+_CToolsPreferences = type(
+    '_CToolsPreferences',
+    (),
+    {DYNAMIC_PROPERTY_ATTR:
+         bpy.props.PointerProperty(type=CToolsDynamicProperty)}
+)
+
+
+class CToolsPreferences(_CToolsPreferences, bpy.types.AddonPreferences):
     bl_idname = __name__
 
     align_box_draw = bpy.props.BoolProperty(
@@ -555,6 +571,7 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
 
 
 classes = [
+    CToolsDynamicProperty,
     CToolsPreferences,
     SCRIPT_OT_cutils_module_update,
 ]
