@@ -234,12 +234,20 @@ def register_submodule(mod):
         mod.__addon_enabled__ = True
 
 
-def unregister_submodule(mod):
+def unregister_submodule(mod, clear_preferences=False):
     if not hasattr(mod, '__addon_enabled__'):
         mod.__addon_enabled__ = False
     if mod.__addon_enabled__:
         mod.unregister()
         mod.__addon_enabled__ = False
+
+    if clear_preferences:
+        U = bpy.context.user_preferences
+        base_name, sub_name = mod.__name__.split('.')
+        base_prefs = U.addons[base_name].preferences
+        target_prop = getattr(base_prefs, DYNAMIC_PROPERTY_ATTR)
+        if sub_name in target_prop:
+            del target_prop[sub_name]
 
 
 def test_platform():
@@ -380,7 +388,7 @@ class CToolsPreferences(_CToolsPreferences, bpy.types.AddonPreferences):
                         if getattr(self, 'use_' + name):
                             register_submodule(mod)
                         else:
-                            unregister_submodule(mod)
+                            unregister_submodule(mod, True)
                     except:
                         # setattr(self, 'use_' + name, False)
                         traceback.print_exc()

@@ -78,22 +78,19 @@ class AddonPreferences:
 
     @classmethod
     def unregister(cls):
-        c = super()
-        if hasattr(c, 'unregister'):
-            c.unregister()
-
         if '.' in cls.bl_idname:
-            # 親オブジェクトからの登録解除。設定値も消す。
+            # 親オブジェクトからの登録解除。
             # 二階層までしか対応しない。ctools以外での使用を想定していない
             U = bpy.context.user_preferences
             base_name, sub_name = cls.bl_idname.split('.')
             base_prefs = U.addons[base_name].preferences
-            target_prop = getattr(base_prefs, cls.DYNAMIC_PROPERTY_ATTR)
-            if sub_name in target_prop:
-                del target_prop[sub_name]
             prop = getattr(base_prefs.__class__, cls.DYNAMIC_PROPERTY_ATTR)
             target_class = prop[1]['type']
             delattr(target_class, sub_name)
+
+        c = super()
+        if hasattr(c, 'unregister'):
+            c.unregister()
 
 
 class SpaceProperty:
@@ -367,7 +364,10 @@ def operator_call(op, *args, _scene_update=True, **kw):
 
 
 class AddonRegisterInfo:
-    DYNAMIC_PROPERTY_ATTR = DYNAMIC_PROPERTY_ATTR
+    if 'DYNAMIC_PROPERTY_ATTR' in globals():
+        DYNAMIC_PROPERTY_ATTR = DYNAMIC_PROPERTY_ATTR
+    else:
+        DYNAMIC_PROPERTY_ATTR = ''
 
     @staticmethod
     def name_mangling(class_name, attr):
@@ -534,20 +534,28 @@ class AddonRegisterInfo:
                 prefs = getattr(prefs, attr)
             return prefs
 
-        U = bpy.context.user_preferences
+        U = _bpy.context.user_preferences
         if '.' in cls.bl_idname:
             # ctools以外での使用を想定していない
             base_name, sub_name = cls.bl_idname.split('.')
             base_prefs = U.addons[base_name].preferences
-            addons = getattr(base_prefs, cls.DYNAMIC_PROPERTY_ATTR)
-            return getattr(addons, sub_name)
+            if cls.DYNAMIC_PROPERTY_ATTR:
+                addons = getattr(base_prefs, cls.DYNAMIC_PROPERTY_ATTR)
+                return getattr(addons, sub_name)
+            else:
+                return getattr(base_prefs, sub_name)
         else:
             return U.addons[cls.bl_idname].preferences
 
-
     @staticmethod
-    def __reversed_keymap_table():
+    def __verify_keyconfigs():
+        return _bpy.context.window_manager.keyconfigs.addon is not None
+
+    @classmethod
+    def __reversed_keymap_table(cls):
         """KeyMapItemがキー、KeyMapが値の辞書を返す"""
+        if not cls.__verify_keyconfigs():
+            return
         kc = _bpy.context.window_manager.keyconfigs.addon
         km_table = {}
         for km in kc.keymaps:
@@ -567,6 +575,9 @@ class AddonRegisterInfo:
         """
         import itertools
         import mathutils
+
+        if not cls.__verify_keyconfigs():
+            return
 
         values = []
         km_table = cls.__reversed_keymap_table()
@@ -617,6 +628,8 @@ class AddonRegisterInfo:
     @classmethod
     def keymap_items_set_attributes(cls, values, set_default=False):
         import traceback
+        if not cls.__verify_keyconfigs():
+            return
         cls.keymap_items_remove()
         keymap_items = []
         for km_name, attrs, op_props in values:
@@ -652,6 +665,8 @@ class AddonRegisterInfo:
         :param kmi: KeyMapItem 若しくは (KeyMap名, KeyMapItemのid)
         :type kmi: _bpy.types.KeyMapItem | (str, int)
         """
+        if not cls.__verify_keyconfigs():
+            return
         if isinstance(kmi, _bpy.types.KeyMapItem):
             km_tabel = cls.__reversed_keymap_table()
             km = km_tabel[kmi]
@@ -670,6 +685,8 @@ class AddonRegisterInfo:
             リスト
         :type addon_keymaps: list[_bpy.types.KeyMapItem] | list[(str, int)]
         """
+        if not cls.__verify_keyconfigs():
+            return
         km_tabel = cls.__reversed_keymap_table()
         items = []
         for kmi in addon_keymaps:
@@ -695,6 +712,8 @@ class AddonRegisterInfo:
         :param remove: KeyMapItemをKeyMapItemsから削除する
         :type remove: bool
         """
+        if not cls.__verify_keyconfigs():
+            return
         km_table = cls.__reversed_keymap_table()
         if isinstance(kmi, _bpy.types.KeyMapItem):
             km = km_table[kmi]
@@ -724,6 +743,8 @@ class AddonRegisterInfo:
             self._default_keymap_itemsに含まれないもののみ消す
         :type remove_only_added: bool
         """
+        if not cls.__verify_keyconfigs():
+            return
         if remove:
             for km_name, kmi_id in cls.keymap_items:
                 if remove_only_added:
@@ -1656,8 +1677,11 @@ class AddonRegisterInfo:
             items_post = get_km_items()
             bpy_types_post = set(dir(_bpy.types))
 
-            keymap_items = [item for item in items_post
-                            if item not in items_pre]
+            if items_pre is not None and items_post is not None:
+                keymap_items = [item for item in items_post
+                                if item not in items_pre]
+            else:
+                keymap_items = []
 
             new_type_names = []
             addon_prefs_class = None
