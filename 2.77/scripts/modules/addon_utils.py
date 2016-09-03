@@ -1510,6 +1510,17 @@ def paths():
     # if folder addons_contrib/ exists, scripts in there will be loaded too
     addon_paths += _bpy.utils.script_paths("addons_contrib")
 
+    import os
+    for addon_path in list(addon_paths):
+        for path in os.listdir(addon_path):
+            p = os.path.join(addon_path, path)
+            if os.path.isdir(p):
+                for dirpath, dirnames, filenames in os.walk(p):
+                    if 'ADDON_DIRECTORY' in filenames:
+                        addon_paths.append(dirpath)
+                    else:
+                        dirnames.clear()
+
     return addon_paths
 
 
