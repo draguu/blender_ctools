@@ -427,8 +427,9 @@ class AddonRegisterInfo:
 
     def __get_wm_prop(self):
         wm = _bpy.context.window_manager
+        # NOTE: self.bl_idname は '\x06' となっている
         return getattr(wm.addon_register_information,
-                       self.bl_idname.replace('.', '_'))
+                       self.__class__.bl_idname.replace('.', '_'))
 
     # register / unregister -----------------------------------------
     @classmethod
@@ -1713,7 +1714,8 @@ class AddonRegisterInfo:
                     def draw(self, context):
                         instance.draw(context, layout=self.layout)
 
-                    name = instance.bl_idname.replace('.', '_').upper()
+                    cls_ = instance.__class__
+                    name = cls_.bl_idname.replace('.', '_').upper()
                     addon_prefs_class = type(
                         'AddonPreferences' + name,
                         (_bpy.types.AddonPreferences,),
