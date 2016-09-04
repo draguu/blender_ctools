@@ -71,3 +71,40 @@ alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修�
 ![Image](images/bug.jpg)  
 適用後:  
 ![Image](images/patch.jpg)
+
+### 2.77/scripts
+既存のファイルを上書きして動作を変える。
+
+#### 2.77/scripts/modules/bpy/utils/\_\_init\_\_.py  
+アドオンのディレクトリが複数設定可能になる。  
+自分で書いた物、ダウンロードした物とかでディレクトリを分けたい場合等に。
+
+* 設定方法  
+ディレクトリのパスを記述した`addons.pth`というファイルをユーザーのconfigディレクトリに保存する。
+
+    例:
+    
+    ```
+    # /home/hoge/.config/blender/2.77/config/addons.pth
+    
+    ../scripts/addons/addons_subdir
+    ../scripts/addons_dev
+    ```
+
+* ユーザーのconfigディレクトリはblenderのPythonConsoleで以下の様にして確認できる。  
+
+    ```
+    >>> bpy.utils.user_resource('CONFIG')
+    '/home/hoge/.config/blender/2.77/config/'
+    ```
+
+* その他  
+    `bpy.utils.script_paths()`の返り値に任意のパスを加えたい場合は同じように`scripts.pth`を作成する。  
+    `bpy.utils.script_paths('addons_contrib')`の場合は`addons_contrib.pth`、`bpy.utils.script_paths('modules')`なら`modules.pth`といったファイルを作成する。
+
+#### 2.77/scripts/startup/bl_ui/space_userpref.py  
+UserPreferencesのaddonの検索ボックスで、パスの区切り文字(linuxなら/)の後に正規表現でパターンを入力するとファイル名でフィルタリング出来る。  
+
+#### 2.77/scripts/modules/addon_utils.py  
+UserPreferencesでのaddon詳細表示で、addonが追加するショートカットとクラスを表示する。  
+![Image](images/keymaps.jpg)

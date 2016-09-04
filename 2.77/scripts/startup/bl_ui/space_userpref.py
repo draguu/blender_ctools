@@ -1284,6 +1284,7 @@ class USERPREF_PT_addons(Panel):
 
     def draw(self, context):
         import os
+        import re
         import addon_utils
 
         layout = self.layout
@@ -1300,8 +1301,6 @@ class USERPREF_PT_addons(Panel):
         split = layout.split(percentage=0.2)
         col = split.column()
         col.prop(context.window_manager, "addon_search", text="", icon='VIEWZOOM')
-        col.prop(context.window_manager, "addon_search_path", text="",
-                 icon='FILE')
 
         col.label(text="Supported Level")
         col.prop(context.window_manager, "addon_support", expand=True)
@@ -1326,8 +1325,7 @@ class USERPREF_PT_addons(Panel):
                             )
 
         filter = context.window_manager.addon_filter
-        search = context.window_manager.addon_search.lower()
-        search_path = context.window_manager.addon_search_path
+        search = context.window_manager.addon_search
         support = context.window_manager.addon_support
 
         # initialized on demand
@@ -1349,15 +1347,25 @@ class USERPREF_PT_addons(Panel):
                 (filter == "User" and (mod.__file__.startswith((scripts_addons_folder, userpref_addons_folder))))
                 ):
 
-                if search and search not in info["name"].lower():
-                    if info["author"]:
-                        if search not in info["author"].lower():
+                if search:
+                    match = True
+                    for word in search.split(' '):
+                        if not word:
                             continue
-                    else:
+                        if word.startswith(os.path.sep):
+                            if not re.search(word, mod.__file__):
+                                match = False
+                                break
+                        elif word.lower() in info["name"].lower():
+                            pass
+                        elif (info["author"] and
+                              word.lower() in info["author"].lower()):
+                            pass
+                        else:
+                            match = False
+                            break
+                    if not match:
                         continue
-
-                if search_path and search_path not in mod.__file__:
-                    continue
 
                 # Addon UI Code
                 col_box = col.column()
