@@ -47,7 +47,7 @@
  
 --- scripts/modules/addon_utils.py
 +++ scripts/modules/addon_utils.py
-@@ -36,6 +36,1463 @@
+@@ -36,6 +36,1465 @@
  addons_fake_modules = {}
  
  
@@ -115,8 +115,9 @@
 +
 +    def __get_wm_prop(self):
 +        wm = _bpy.context.window_manager
++        # NOTE: self.bl_idname は '\x06' となっている
 +        return getattr(wm.addon_register_information,
-+                       self.bl_idname.replace('.', '_'))
++                       self.__class__.bl_idname.replace('.', '_'))
 +
 +    # register / unregister -----------------------------------------
 +    @classmethod
@@ -1401,7 +1402,8 @@
 +                    def draw(self, context):
 +                        instance.draw(context, layout=self.layout)
 +
-+                    name = instance.bl_idname.replace('.', '_').upper()
++                    cls_ = instance.__class__
++                    name = cls_.bl_idname.replace('.', '_').upper()
 +                    addon_prefs_class = type(
 +                        'AddonPreferences' + name,
 +                        (_bpy.types.AddonPreferences,),
@@ -1511,7 +1513,7 @@
  # called only once at startup, avoids calling 'reset_all', correct but slower.
  def _initialize():
      path_list = paths()
-@@ -346,6 +1803,7 @@
+@@ -346,6 +1805,7 @@
  
          # 3) try run the modules register function
          try:
@@ -1519,7 +1521,7 @@
              mod.register()
          except Exception as ex:
              print("Exception in module register(): %r" %
-@@ -434,6 +1892,7 @@
+@@ -434,6 +1894,7 @@
                  mod = sys.modules.get(mod_name)
                  if mod:
                      importlib.reload(mod)
