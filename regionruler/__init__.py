@@ -525,6 +525,7 @@ class Data:
 
         # Auto Save
         self.auto_save_time = time.time()
+        self.is_rendering = False
 
     def wm_sync(self):
         """WindowManagerに存在しない物をself.operatorsとself.spacesから削除。
@@ -2723,9 +2724,13 @@ class VIEW3D_PT_region_ruler_node(VIEW3D_PT_region_ruler_base,
 def auto_save(context):
     """ModalOperator中はAutoSaveが働かないのでこちらで再現する
     """
+    U = context.user_preferences
     prefs = RegionRulerPreferences.get_instance()
     file_prefs = context.user_preferences.filepaths
     if not file_prefs.use_auto_save_temporary_files or not prefs.auto_save:
+        return None
+
+    if data.is_rendering:
         return None
 
     if platform.system() not in ('Linux', 'Windows'):
@@ -2775,6 +2780,10 @@ def auto_save(context):
             logger.error("Unable to save '{}'".format(save_dir), exc_info=True)
             data.auto_save_time = t
             return False
+
+    # cyclesレンダリング直後の場合、サムネイル作成でよく落ちるので切る。
+    use_save_preview = U.filepaths.use_save_preview_images
+    U.filepaths.use_save_preview_images = False
     # Save
     try:
         bpy.ops.wm.save_as_mainfile(
@@ -2783,13 +2792,15 @@ def auto_save(context):
     except:
         logger.error("Unable to save '{}'".format(save_dir), exc_info=True)
         data.auto_save_time = t
-        return False
+        saved = False
     else:
         logger.info("Auto Save '{}'".format(save_path))
         # 設定し直す事で内部のタイマーがリセットされる
         data.auto_save_time = os.stat(save_path).st_mtime
         file_prefs.auto_save_time = file_prefs.auto_save_time
-        return True
+        saved = True
+    U.filepaths.use_save_preview_images = use_save_preview
+    return saved
 
 
 ###############################################################################
@@ -2855,6 +2866,16 @@ def scene_update_post_handler(dummy):
                                'INVOKE_DEFAULT', _scene_update=False)
 
 
+@persistent
+def render_start(dummy):
+    data.is_rendering = True
+
+
+@persistent
+def render_stop(dummy):
+    data.is_rendering = False
+
+
 classes = [
     RegionRuler_PG_Font,
     RegionRuler_PG_Color,
@@ -2906,6 +2927,10 @@ def register():
     # Add handlers
     bpy.app.handlers.load_pre.append(load_pre_handler)
     bpy.app.handlers.load_post.append(load_post_handler)
+    # render_*** は init -> pre -> post -> complete の順
+    bpy.app.handlers.render_init.append(render_start)
+    bpy.app.handlers.render_complete.append(render_stop)
+    bpy.app.handlers.render_cancel.append(render_stop)
 
     # Clear data
     data.operators.clear()
@@ -2933,6 +2958,9 @@ def unregister():
     # Remove handlers
     bpy.app.handlers.load_pre.remove(load_pre_handler)
     bpy.app.handlers.load_post.remove(load_post_handler)
+    bpy.app.handlers.render_init.remove(render_start)
+    bpy.app.handlers.render_complete.remove(render_stop)
+    bpy.app.handlers.render_cancel.remove(render_stop)
 
 
 if __name__ == '__main__':
