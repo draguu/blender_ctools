@@ -76,41 +76,6 @@ class QuadViewMovePreferences(
         super().draw(context, self.layout)
 
 
-def get_window_modal_handlers(window):
-    """ctypesを使い、windowに登録されている modal handlerのリストを返す。
-    idnameはUIなら 'UI'、認識できない物なら 'UNKNOWN' となる。
-    :rtype: list[(Structures.wmEventHandler, str, int, int, int)]
-    """
-    if not window:
-        return []
-
-    addr = window.as_pointer()
-    win = cast(c_void_p(addr), POINTER(wmWindow)).contents
-
-    handlers = []
-
-    ptr = cast(win.modalhandlers.first, POINTER(wmEventHandler))
-    while ptr:
-        # http://docs.python.jp/3/library/ctypes.html#surprises
-        # この辺りの事には注意する事
-        handler = ptr.contents
-        area = handler.op_area  # NULLの場合はNone
-        region = handler.op_region  # NULLの場合はNone
-        idname = 'UNKNOWN'
-        if handler.ui_handle:
-            idname = 'UI'
-        if handler.op:
-            op = handler.op.contents
-            ot = op.type.contents
-            if ot.idname:
-                idname = ot.idname.decode()
-        handlers.append((handler, idname, area, region,
-                         handler.op_region_type))
-        ptr = handler.next
-
-    return handlers
-
-
 def swin_from_region(window, region):
     win = cast(c_void_p(window.as_pointer()), POINTER(wmWindow)).contents
     ar = cast(c_void_p(region.as_pointer()), POINTER(ARegion)).contents
@@ -132,7 +97,7 @@ def get_active_region_index(context, mx, my, regions, rv3d_list):
             return i
 
     # test modal handler
-    handlers = get_window_modal_handlers(context.window)
+    handlers = wmWindow.modal_handlers(context.window)
     for h, idname, sa, ar, rt in handlers:
         if idname in ('VIEW3D_OT_zoom', 'VIEW3D_OT_move'):
             if ar is not None:

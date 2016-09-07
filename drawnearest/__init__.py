@@ -2204,6 +2204,8 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             redraw_areas(context, True)
             return {'FINISHED', 'PASS_THROUGH'}
 
+        self.auto_save_utility.save(context)
+
         if context.mode != 'EDIT_MESH':
             return {'PASS_THROUGH'}
 
@@ -2486,6 +2488,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                     draw_callback, (self.__class__, context,), 'WINDOW',
                         'POST_VIEW')
             context.window_manager.modal_handler_add(self)
+            self.auto_save_utility = utils.AutoSaveUtility()
 
             return {'RUNNING_MODAL'}
 

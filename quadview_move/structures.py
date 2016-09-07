@@ -849,7 +849,43 @@ WM_HANDLER_DO_FREE = 1 << 7
 class wmWindow(Structure):
     """source/blender/makesdna/DNA_windowmanager_types.h: 175"""
 
-_fields = fields(
+    @classmethod
+    def modal_handlers(cls, window):
+        """ctypesを使い、windowに登録されている modal handlerのリストを返す。
+        idnameはUIなら 'UI'、認識できない物なら 'UNKNOWN' となる。
+        :type window: bpy.types.Window
+        :rtype: list[(Structures.wmEventHandler, str, int, int, int)]
+        """
+        if not window:
+            return []
+
+        addr = window.as_pointer()
+        win = cast(c_void_p(addr), POINTER(wmWindow)).contents
+
+        handlers = []
+
+        ptr = cast(win.modalhandlers.first, POINTER(wmEventHandler))
+        while ptr:
+            # http://docs.python.jp/3/library/ctypes.html#surprises
+            # この辺りの事には注意する事
+            handler = ptr.contents
+            area = handler.op_area  # NULLの場合はNone
+            region = handler.op_region  # NULLの場合はNone
+            idname = 'UNKNOWN'
+            if handler.ui_handle:
+                idname = 'UI'
+            if handler.op:
+                op = handler.op.contents
+                ot = op.type.contents
+                if ot.idname:
+                    idname = ot.idname.decode()
+            handlers.append((handler, idname, area, region,
+                             handler.op_region_type))
+            ptr = handler.next
+
+        return handlers
+
+wmWindow._fields_ = fields(
     wmWindow, '*next', '*prev',
 
     c_void_p, 'ghostwin',
@@ -898,7 +934,6 @@ _fields = fields(
 
     c_void_p, 'stereo3d_format',  # struct Stereo3dFormat
 )
-wmWindow._fields_ = _fields
 
 
 class SpaceText(Structure):

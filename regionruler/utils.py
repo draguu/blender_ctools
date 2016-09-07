@@ -1820,3 +1820,164 @@ class AddonRegisterInfo:
                                                   instance=instance)
         module.unregister = new_cls.module_unregister(module.unregister,
                                                       instance=instance)
+
+
+def is_main_loop_scene_update(context, scene):
+    """bpy.app.handlers.scene_update_pre(post) へ追加した関数の中で呼ぶ。
+    それがメインループから呼ばれたものか否かを返す。完全な判定は期待できない。
+    :type context: bpy.types.Context
+    :param scene: bpy.app.handlers.scene_update_pre(post) の引数。
+    :type scene: bpy.types.Scene
+    :rtype: bool
+    """
+    win = context.window
+    scr = context.screen
+    scn = context.scene
+    if win and scr and scn:
+        if scr == win.screen and scn == scr.scene == scene:
+            if not context.region:  # wm_event_do_notifiers()参照
+                return True
+    return False
+
+
+class AutoSaveUtility:
+    """
+    modal operator の実行中は auto save が無効化されるので、このクラスを使って
+    ファイルを保存する。
+    invoke()で初期化、modal()でsave()メソッドを呼ぶ。
+
+    """
+
+    ignore_operators = [
+        'VIEW3D_OT_region_ruler',
+        'VIEW3D_OT_draw_nearest_element',
+        'WM_OT_screencast_keys',
+    ]
+
+    import logging
+
+    def __init__(self, logging_level=logging.WARNING):
+        import logging
+        import time
+
+        self.logger = logger = logging.getLogger(__name__)
+        logger.setLevel(logging_level)
+        handler = logging.StreamHandler()
+        handler.setLevel(logging.NOTSET)
+        formatter = logging.Formatter(
+            '%(asctime)s [%(levelname)s] [%(name)s.%(funcName)s():%(lineno)d]: '
+            '%(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+        self.path = ''
+        self.save_time = time.time()
+        self.failed_count = 0
+
+    def reset(self):
+        import time
+        self.save_time = time.time()
+        self.failed_count = 0
+
+    def save(self, context):
+        """
+        :type context: bpy.context
+        :rtype: bool
+        """
+        import os
+        import platform
+        import time
+        try:
+            from . import structures
+        except ImportError:
+            structures = None
+
+        file_prefs = context.user_preferences.filepaths
+        if not file_prefs.use_auto_save_temporary_files:
+            return None
+
+        cur_time = time.time()
+        save_interval = file_prefs.auto_save_time * 60
+        ofs_time = 10.0 * self.failed_count
+        # 指定時間に達しているか確認
+        if cur_time - self.save_time < save_interval + ofs_time:
+            return None
+
+        if structures:
+            for win in context.window_manager.windows:
+                handlers = structures.wmWindow.modal_handlers(win)
+                for handler, idname, sa, ar, rt in handlers:
+                    if handler.op:
+                        if idname not in self.ignore_operators:
+                            if self.logger:
+                                self.logger.debug(
+                                    "Modal operator <{}> is running. "
+                                    "Skip auto save".format(idname))
+                            return None
+
+        # 保存先となるパスを生成。wm_autosave_location()参照
+        if bpy.data.is_saved:
+            file_name = os.path.basename(bpy.data.filepath)
+            save_base_name = os.path.splitext(file_name)[0] + '.blend'
+        else:
+            if platform.system() not in ('Linux', 'Windows'):
+                # os.gitpid()が使用出来ず、ファイル名が再現出来無い為
+                return None
+            pid = os.getpid()
+            save_base_name = str(pid) + '.blend'
+        save_dir = os.path.normpath(
+            os.path.join(bpy.app.tempdir, os.path.pardir))
+        if platform.system() == 'Windows' and not os.path.exists(save_dir):
+            save_dir = bpy.utils.user_resource('AUTOSAVE')
+        save_path = self.path = os.path.join(save_dir, save_base_name)
+
+        # 既にファイルが存在して更新時間がself.save_timeより進んでいたら
+        # その時間と同期する
+        if os.path.exists(save_path):
+            st = os.stat(save_path)
+            if self.save_time < st.st_mtime:
+                self.save_time = st.st_mtime
+                if self.logger:
+                    self.logger.debug("Auto saved file '{}' is updated".format(
+                        save_path))
+            if cur_time - self.save_time < save_interval + ofs_time:
+                return None
+
+        if self.logger:
+            self.logger.debug("Try auto save '{}' ...".format(save_path))
+
+        # ディレクトリ生成
+        if not os.path.exists(save_dir):
+            try:
+                os.makedirs(save_dir)
+            except:
+                if self.logger:
+                    self.logger.error("Unable to save '{}'".format(save_dir),
+                                      exc_info=True)
+                self.failed_count += 1
+                return False
+
+        # cyclesレンダリング直後の場合、サムネイル作成でよく落ちるので切る。
+        use_save_preview = file_prefs.use_save_preview_images
+        file_prefs.use_save_preview_images = False
+        # Save
+        try:
+            bpy.ops.wm.save_as_mainfile(
+                False, filepath=save_path, compress=False, relative_remap=True,
+                copy=True, use_mesh_compat=False)
+        except:
+            if self.logger:
+                self.logger.error("Unable to save '{}'".format(save_dir),
+                                  exc_info=True)
+            self.failed_count += 1
+            saved = False
+        else:
+            if self.logger:
+                self.logger.info("Auto Save '{}'".format(save_path))
+            # 設定し直す事で内部のタイマーがリセットされる
+            self.save_time = os.stat(save_path).st_mtime
+            self.failed_count = 0
+            file_prefs.auto_save_time = file_prefs.auto_save_time
+            saved = True
+        file_prefs.use_save_preview_images = use_save_preview
+        return saved

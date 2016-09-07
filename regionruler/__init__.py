@@ -524,8 +524,9 @@ class Data:
         self.alt_disable_count = 0
 
         # Auto Save
-        self.auto_save_time = time.time()
-        self.is_rendering = False
+        # self.auto_save_time = time.time()
+        # self.is_rendering = False
+        self.auto_save_utility = utils.AutoSaveUtility()
 
     def wm_sync(self):
         """WindowManagerに存在しない物をself.operatorsとself.spacesから削除。
@@ -856,7 +857,6 @@ def draw_font_context(context, font_id, text, outline=False,
         draw_font(font_id, text, outline_color)
     else:
         draw_font(font_id, text)
-
 
 
 def get_background_color(context, y=None):
@@ -2569,8 +2569,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
             self.mco_prev = (event.mouse_x - region.x,
                              event.mouse_y - region.y)
 
-        if not running_other_modal:
-            auto_save(context)
+        data.auto_save_utility.save(context)
 
         return retval
 
@@ -2719,91 +2718,6 @@ class VIEW3D_PT_region_ruler_node(VIEW3D_PT_region_ruler_base,
 
 
 ###############################################################################
-# AutoSave
-###############################################################################
-def auto_save(context):
-    """ModalOperator中はAutoSaveが働かないのでこちらで再現する
-    """
-    U = context.user_preferences
-    prefs = RegionRulerPreferences.get_instance()
-    file_prefs = context.user_preferences.filepaths
-    if not file_prefs.use_auto_save_temporary_files or not prefs.auto_save:
-        return None
-
-    if data.is_rendering:
-        return None
-
-    if platform.system() not in ('Linux', 'Windows'):
-        # os.gitpid()が使用出来ず、ファイル名が再現出来無い為
-        return False
-
-    t = time.time()
-    # 指定時間に達しているか確認
-    if t - data.auto_save_time < file_prefs.auto_save_time * 60:
-        return None
-
-    # 保存先となるパスを生成
-    pid = os.getpid()
-    if bpy.data.is_saved:
-        file_name = os.path.basename(bpy.data.filepath)
-        name = os.path.splitext(file_name)[0]
-        save_base_name = '{}-{}.blend'.format(name, pid)
-    else:
-        save_base_name = '{}.blend'.format(pid)
-    # auto_saveはUserPrefのTempディレクトリに行われる。
-    # bpy.app.tempdirはその下の'blender_******'ディレクトリを指す。
-    # 例: '/tmp/blender_Q7s8pE/'  (最後は必ず区切り文字で終わる)
-    # ※tempdirに'/home/'等の権限が無いパスを指定していた場合、下位ディレクトリ
-    # ('blender_******')が生成されず、bpy.app.tempdirも'/home/'になる。
-    save_dir = os.path.dirname(os.path.dirname(bpy.app.tempdir))
-    if platform.system() == 'Windows' and not os.path.exists(save_dir):
-        save_dir = bpy.utils.user_resource('AUTOSAVE')
-    save_path = os.path.join(save_dir, save_base_name)
-
-    # 既にファイルが存在して更新時間がdata.auto_save_timeより進んでいたら
-    # その時間と同期する
-    if os.path.exists(save_path):
-        st = os.stat(save_path)
-        if data.auto_save_time < st.st_mtime:
-            data.auto_save_time = st.st_mtime
-    # 指定時間に達しているか確認
-    if t - data.auto_save_time < file_prefs.auto_save_time * 60:
-        return None
-
-    logger.debug("Try auto save '{}' ...".format(save_path))
-
-    # ディレクトリ生成
-    if not os.path.exists(save_dir):
-        try:
-            os.makedirs(save_dir)
-        except:
-            logger.error("Unable to save '{}'".format(save_dir), exc_info=True)
-            data.auto_save_time = t
-            return False
-
-    # cyclesレンダリング直後の場合、サムネイル作成でよく落ちるので切る。
-    use_save_preview = U.filepaths.use_save_preview_images
-    U.filepaths.use_save_preview_images = False
-    # Save
-    try:
-        bpy.ops.wm.save_as_mainfile(
-            False, filepath=save_path, compress=False, relative_remap=True,
-            copy=True, use_mesh_compat=False)
-    except:
-        logger.error("Unable to save '{}'".format(save_dir), exc_info=True)
-        data.auto_save_time = t
-        saved = False
-    else:
-        logger.info("Auto Save '{}'".format(save_path))
-        # 設定し直す事で内部のタイマーがリセットされる
-        data.auto_save_time = os.stat(save_path).st_mtime
-        file_prefs.auto_save_time = file_prefs.auto_save_time
-        saved = True
-    U.filepaths.use_save_preview_images = use_save_preview
-    return saved
-
-
-###############################################################################
 # Save / Load / Register
 ###############################################################################
 @persistent
@@ -2828,7 +2742,7 @@ def load_post_handler(dummy):
     logger.debug('Load Post')
 
     # 読み込み時にAutoSaveのタイマーリセット
-    data.auto_save_time = time.time()
+    data.auto_save_utility.reset()
 
     data.wm_sync()
 
@@ -2866,14 +2780,14 @@ def scene_update_post_handler(dummy):
                                'INVOKE_DEFAULT', _scene_update=False)
 
 
-@persistent
-def render_start(dummy):
-    data.is_rendering = True
-
-
-@persistent
-def render_stop(dummy):
-    data.is_rendering = False
+# @persistent
+# def render_start(dummy):
+#     data.is_rendering = True
+#
+#
+# @persistent
+# def render_stop(dummy):
+#     data.is_rendering = False
 
 
 classes = [
@@ -2927,10 +2841,10 @@ def register():
     # Add handlers
     bpy.app.handlers.load_pre.append(load_pre_handler)
     bpy.app.handlers.load_post.append(load_post_handler)
-    # render_*** は init -> pre -> post -> complete の順
-    bpy.app.handlers.render_init.append(render_start)
-    bpy.app.handlers.render_complete.append(render_stop)
-    bpy.app.handlers.render_cancel.append(render_stop)
+    # # render_*** は init -> pre -> post -> complete の順
+    # bpy.app.handlers.render_init.append(render_start)
+    # bpy.app.handlers.render_complete.append(render_stop)
+    # bpy.app.handlers.render_cancel.append(render_stop)
 
     # Clear data
     data.operators.clear()
@@ -2958,9 +2872,9 @@ def unregister():
     # Remove handlers
     bpy.app.handlers.load_pre.remove(load_pre_handler)
     bpy.app.handlers.load_post.remove(load_post_handler)
-    bpy.app.handlers.render_init.remove(render_start)
-    bpy.app.handlers.render_complete.remove(render_stop)
-    bpy.app.handlers.render_cancel.remove(render_stop)
+    # bpy.app.handlers.render_init.remove(render_start)
+    # bpy.app.handlers.render_complete.remove(render_stop)
+    # bpy.app.handlers.render_cancel.remove(render_stop)
 
 
 if __name__ == '__main__':

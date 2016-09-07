@@ -845,6 +845,8 @@ class ScreencastKeysStatus(bpy.types.Operator):
 
             self.__class__.prev_time = current_time
 
+        self.auto_save_utility.save(context)
+
         return {'PASS_THROUGH'}
 
     @classmethod
@@ -891,6 +893,7 @@ class ScreencastKeysStatus(bpy.types.Operator):
             self.origin['area'] = context.area.as_pointer()
             self.origin['space'] = context.space_data.as_pointer()
             self.origin['region_type'] = context.region.type
+            self.auto_save_utility = utils.AutoSaveUtility()
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
