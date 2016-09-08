@@ -845,7 +845,7 @@ class ScreencastKeysStatus(bpy.types.Operator):
 
             self.__class__.prev_time = current_time
 
-        self.auto_save_utility.save(context)
+        auto_save_manager.save(context)
 
         return {'PASS_THROUGH'}
 
@@ -893,7 +893,6 @@ class ScreencastKeysStatus(bpy.types.Operator):
             self.origin['area'] = context.area.as_pointer()
             self.origin['space'] = context.space_data.as_pointer()
             self.origin['region_type'] = context.region.type
-            self.auto_save_utility = utils.AutoSaveUtility()
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
 
@@ -1043,11 +1042,14 @@ classes = (
     ScreencastKeysPanel,
 )
 
+auto_save_manager = utils.AutoSaveManager()
+
 
 @ScreenCastKeysPreferences.module_register
 def register():
     for c in classes:
         bpy.utils.register_class(c)
+    auto_save_manager.register()
 
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
@@ -1061,6 +1063,7 @@ def register():
 def unregister():
     for c in classes:
         bpy.utils.unregister_class(c)
+    auto_save_manager.unregister()
 
 
 if __name__ == '__main__':

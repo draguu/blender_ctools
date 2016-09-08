@@ -2204,7 +2204,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             redraw_areas(context, True)
             return {'FINISHED', 'PASS_THROUGH'}
 
-        self.auto_save_utility.save(context)
+        auto_save_manager.save(context)
 
         if context.mode != 'EDIT_MESH':
             return {'PASS_THROUGH'}
@@ -2488,7 +2488,6 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                     draw_callback, (self.__class__, context,), 'WINDOW',
                         'POST_VIEW')
             context.window_manager.modal_handler_add(self)
-            self.auto_save_utility = utils.AutoSaveUtility()
 
             return {'RUNNING_MODAL'}
 
@@ -2578,6 +2577,8 @@ def load_pre(dummy):
     dm_cache.clear()
 
 
+auto_save_manager = utils.AutoSaveManager()
+
 classes = [
     DrawNearestPreferences,
     VIEW3D_PG_DrawNearest,
@@ -2589,6 +2590,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     space_prop.register()
+    auto_save_manager.register()
     bpy.types.VIEW3D_PT_view3d_meshdisplay.append(menu_func)
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
     bpy.app.handlers.load_pre.append(load_pre)
@@ -2598,6 +2600,7 @@ def unregister():
     bpy.app.handlers.scene_update_pre.remove(scene_update_pre)
     bpy.app.handlers.load_pre.remove(load_pre)
     bpy.types.VIEW3D_PT_view3d_meshdisplay.remove(menu_func)
+    auto_save_manager.unregister()
     space_prop.unregister()
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

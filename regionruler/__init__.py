@@ -523,11 +523,6 @@ class Data:
         self.alt = False
         self.alt_disable_count = 0
 
-        # Auto Save
-        # self.auto_save_time = time.time()
-        # self.is_rendering = False
-        self.auto_save_utility = utils.AutoSaveUtility()
-
     def wm_sync(self):
         """WindowManagerに存在しない物をself.operatorsとself.spacesから削除。
         self.spacesに限って必要な要素を追加する。
@@ -2569,7 +2564,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
             self.mco_prev = (event.mouse_x - region.x,
                              event.mouse_y - region.y)
 
-        data.auto_save_utility.save(context)
+        auto_save_manager.save(context)
 
         return retval
 
@@ -2741,9 +2736,6 @@ def load_pre_handler(dummy):
 def load_post_handler(dummy):
     logger.debug('Load Post')
 
-    # 読み込み時にAutoSaveのタイマーリセット
-    data.auto_save_utility.reset()
-
     data.wm_sync()
 
     add_callback = False
@@ -2780,14 +2772,7 @@ def scene_update_post_handler(dummy):
                                'INVOKE_DEFAULT', _scene_update=False)
 
 
-# @persistent
-# def render_start(dummy):
-#     data.is_rendering = True
-#
-#
-# @persistent
-# def render_stop(dummy):
-#     data.is_rendering = False
+auto_save_manager = utils.AutoSaveManager()
 
 
 classes = [
@@ -2832,6 +2817,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     space_prop.register()
+    auto_save_manager.register()
 
     bpy.types.Event.mco = property(event_mco_get)
     bpy.types.Event.mco_prev = property(event_mco_prev_get)
@@ -2858,6 +2844,7 @@ def unregister():
     logger.debug('Unregister RegionRuler')
     draw_handler_remove()
 
+    auto_save_manager.unregister()
     space_prop.unregister()
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

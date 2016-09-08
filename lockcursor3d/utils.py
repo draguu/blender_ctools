@@ -1840,11 +1840,24 @@ def is_main_loop_scene_update(context, scene):
     return False
 
 
-class AutoSaveUtility:
+class AutoSaveManager:
     """
     modal operator の実行中は auto save が無効化されるので、このクラスを使って
     ファイルを保存する。
-    invoke()で初期化、modal()でsave()メソッドを呼ぶ。
+
+    例:
+
+    class ModalOperator(bpy.types.Operator):
+        def modal(self, context, event):
+            auto_save_manager.save(context)
+
+    auto_save_manager = utils.AutoSaveManager()
+
+    def register():
+        auto_save_manager.register()
+
+    def unregister():
+        auto_save_manager.unregister()
 
     """
 
@@ -1854,28 +1867,104 @@ class AutoSaveUtility:
         'WM_OT_screencast_keys',
     ]
 
-    import logging
+    WM_ATTR = 'auto_save_manager'
 
-    def __init__(self, logging_level=logging.WARNING):
+    def global_instance(self):
+        """
+        :rtype: AutoSaveManager
+        """
+        wm_type = bpy.types.WindowManager
+        inst = getattr(wm_type, self.WM_ATTR, None)
+        if not inst:
+            setattr(wm_type, self.WM_ATTR, self)
+            inst = self
+        return inst
+
+    # @classmethod
+    # def get_callback(cls):
+    #     handlers = bpy.app.handlers.scene_update_pre
+    #     for func in handlers:
+    #         if hasattr(func, '__func__'):
+    #             f = func.__func__
+    #             if hasattr(f, '__qualname__'):
+    #                 if f.__qualname__ == cls.__qualname__ + '.callback':
+    #                     return func
+
+    def register(self, load=True, scene_update=False):
+        if not self.registered:
+            self.registered = True
+            self_ = self.global_instance()
+            self_.users += 1
+            if load:
+                if not self.registered_load:
+                    self.registered_load = True
+                    self_.users_load += 1
+                    if self_.users_load == 1:
+                        bpy.app.handlers.load_post.append(self_.load_callback)
+            if scene_update:
+                if not self.registered_scene_update:
+                    self.registered_scene_update = True
+                    self_.users_scene_update += 1
+                    if self_.users_scene_update == 1:
+                        bpy.app.handlers.scene_update_pre.append(
+                            self_.scene_callback)
+
+    def unregister(self):
+        if self.registered:
+            self.registered = False
+            self_ = self.global_instance()
+            self_.users -= 1
+            if self.registered_load:
+                self.registered_load = False
+                self_.users_load -= 1
+                if self_.users_load == 0:
+                    bpy.app.handlers.load_post.remove(self_.load_callback)
+            if self.registered_scene_update:
+                self.registered_scene_update = False
+                self_.users_scene_update -= 1
+                if self_.users_scene_update == 0:
+                    bpy.app.handlers.scene_update_pre.remove(
+                        self_.scene_callback)
+            if self_.users == 0:
+                delattr(bpy.types.WindowManager, self.WM_ATTR)
+
+    @bpy.app.handlers.persistent
+    def load_callback(self, scene):
+        import time
+        self_ = self.global_instance()
+        self_.save_time = time.time()
+        self_.failed_count = 0
+
+    @bpy.app.handlers.persistent
+    def scene_callback(self, scene):
+        if not is_main_loop_scene_update(bpy.context, scene):
+            return
+        self.save(bpy.context)
+
+    def __init__(self):
         import logging
         import time
 
         self.logger = logger = logging.getLogger(__name__)
-        logger.setLevel(logging_level)
+        logger.setLevel(logging.WARNING)
         handler = logging.StreamHandler()
         handler.setLevel(logging.NOTSET)
         formatter = logging.Formatter(
-            '%(asctime)s [%(levelname)s] [%(name)s.%(funcName)s():%(lineno)d]: '
+            '%(asctime)s [%(levelname)s] '
+            '[%(name)s.%(funcName)s():%(lineno)d]: '
             '%(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
-        self.path = ''
-        self.save_time = time.time()
-        self.failed_count = 0
+        self.users = 0
+        self.users_load = 0
+        self.users_scene_update = 0
 
-    def reset(self):
-        import time
+        self.registered = False
+        self.registered_load = False
+        self.registered_scene_update = False
+
+        self.path = ''
         self.save_time = time.time()
         self.failed_count = 0
 
@@ -1887,33 +1976,42 @@ class AutoSaveUtility:
         import os
         import platform
         import time
+        import traceback
+
         try:
             from . import structures
-        except ImportError:
+        except:
+            traceback.print_exc()
             structures = None
 
         file_prefs = context.user_preferences.filepaths
         if not file_prefs.use_auto_save_temporary_files:
             return None
 
+        self_ = self.global_instance()
+
         cur_time = time.time()
         save_interval = file_prefs.auto_save_time * 60
-        ofs_time = 10.0 * self.failed_count
+        ofs_time = 10.0 * self_.failed_count
         # 指定時間に達しているか確認
-        if cur_time - self.save_time < save_interval + ofs_time:
+        if cur_time - self_.save_time < save_interval + ofs_time:
             return None
 
         if structures:
+            system_auto_save = True
             for win in context.window_manager.windows:
-                handlers = structures.wmWindow.modal_handlers(win)
+                handlers = structures.wmWindow.modal_handlers(
+                    win)
                 for handler, idname, sa, ar, rt in handlers:
                     if handler.op:
-                        if idname not in self.ignore_operators:
-                            if self.logger:
-                                self.logger.debug(
-                                    "Modal operator <{}> is running. "
-                                    "Skip auto save".format(idname))
+                        system_auto_save = False
+                        if idname not in self_.ignore_operators:
+                            self_.logger.debug(
+                                "Modal operator <{}> is running. "
+                                "Skip auto save".format(idname))
                             return None
+            if system_auto_save:
+                return None
 
         # 保存先となるパスを生成。wm_autosave_location()参照
         if bpy.data.is_saved:
@@ -1929,32 +2027,29 @@ class AutoSaveUtility:
             os.path.join(bpy.app.tempdir, os.path.pardir))
         if platform.system() == 'Windows' and not os.path.exists(save_dir):
             save_dir = bpy.utils.user_resource('AUTOSAVE')
-        save_path = self.path = os.path.join(save_dir, save_base_name)
+        save_path = self_.path = os.path.join(save_dir, save_base_name)
 
         # 既にファイルが存在して更新時間がself.save_timeより進んでいたら
         # その時間と同期する
         if os.path.exists(save_path):
             st = os.stat(save_path)
-            if self.save_time < st.st_mtime:
-                self.save_time = st.st_mtime
-                if self.logger:
-                    self.logger.debug("Auto saved file '{}' is updated".format(
-                        save_path))
-            if cur_time - self.save_time < save_interval + ofs_time:
+            if self_.save_time < st.st_mtime:
+                self_.save_time = st.st_mtime
+                self_.logger.debug("Auto saved file '{}' is updated".format(
+                    save_path))
+            if cur_time - self_.save_time < save_interval + ofs_time:
                 return None
 
-        if self.logger:
-            self.logger.debug("Try auto save '{}' ...".format(save_path))
+        self_.logger.debug("Try auto save '{}' ...".format(save_path))
 
         # ディレクトリ生成
         if not os.path.exists(save_dir):
             try:
                 os.makedirs(save_dir)
             except:
-                if self.logger:
-                    self.logger.error("Unable to save '{}'".format(save_dir),
-                                      exc_info=True)
-                self.failed_count += 1
+                self_.logger.error("Unable to save '{}'".format(save_dir),
+                                   exc_info=True)
+                self_.failed_count += 1
                 return False
 
         # cyclesレンダリング直後の場合、サムネイル作成でよく落ちるので切る。
@@ -1966,18 +2061,18 @@ class AutoSaveUtility:
                 False, filepath=save_path, compress=False, relative_remap=True,
                 copy=True, use_mesh_compat=False)
         except:
-            if self.logger:
-                self.logger.error("Unable to save '{}'".format(save_dir),
-                                  exc_info=True)
-            self.failed_count += 1
+            self_.logger.error("Unable to save '{}'".format(save_dir),
+                               exc_info=True)
+            self_.failed_count += 1
             saved = False
         else:
-            if self.logger:
-                self.logger.info("Auto Save '{}'".format(save_path))
+            self_.logger.info("Auto Save '{}'".format(save_path))
             # 設定し直す事で内部のタイマーがリセットされる
-            self.save_time = os.stat(save_path).st_mtime
-            self.failed_count = 0
+            self_.save_time = os.stat(save_path).st_mtime
+            self_.failed_count = 0
             file_prefs.auto_save_time = file_prefs.auto_save_time
             saved = True
         file_prefs.use_save_preview_images = use_save_preview
         return saved
+
+
