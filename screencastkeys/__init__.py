@@ -562,6 +562,7 @@ class ScreencastKeysStatus(bpy.types.Operator):
 
     @classmethod
     def draw_callback(cls, context):
+        # FIXME: 起動中にaddonを無効にした場合,get_instance()が例外を吐く
         prefs = ScreenCastKeysPreferences.get_instance()
         """:type: ScreenCastKeysPreferences"""
 

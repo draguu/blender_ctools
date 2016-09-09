@@ -1867,18 +1867,7 @@ class AutoSaveManager:
         'WM_OT_screencast_keys',
     ]
 
-    WM_ATTR = 'auto_save_manager'
-
-    def global_instance(self):
-        """
-        :rtype: AutoSaveManager
-        """
-        wm_type = bpy.types.WindowManager
-        inst = getattr(wm_type, self.WM_ATTR, None)
-        if not inst:
-            setattr(wm_type, self.WM_ATTR, self)
-            inst = self
-        return inst
+    ATTR = [bpy.types.WindowManager, 'auto_save_manager']
 
     # @classmethod
     # def get_callback(cls):
@@ -1890,56 +1879,103 @@ class AutoSaveManager:
     #                 if f.__qualname__ == cls.__qualname__ + '.callback':
     #                     return func
 
+    # TODO: クラスメソッドにする
+    def global_instance(self, create=True):
+        """
+        :rtype: AutoSaveManager
+        """
+        wm_type, attr = self.ATTR
+        inst = getattr(wm_type, attr, None)
+        if not inst and create:
+            setattr(wm_type, attr, self)
+            inst = self
+        return inst
+
+    def users_load(self):
+        self_ = self.global_instance(create=False)
+        return [obj for obj in self_.users if obj.registered_load]
+
+    def users_scene_update(self):
+        self_ = self.global_instance(create=False)
+        return [obj for obj in self_.users if obj.registered_scene_update]
+
     def register(self, load=True, scene_update=False):
         if not self.registered:
             self.registered = True
             self_ = self.global_instance()
-            self_.users += 1
+            self_.users.append(self)
             if load:
                 if not self.registered_load:
                     self.registered_load = True
-                    self_.users_load += 1
-                    if self_.users_load == 1:
+                    if len(self_.users_load()) == 1:
                         bpy.app.handlers.load_post.append(self_.load_callback)
             if scene_update:
                 if not self.registered_scene_update:
                     self.registered_scene_update = True
-                    self_.users_scene_update += 1
-                    if self_.users_scene_update == 1:
+                    if len(self_.users_scene_update()) == 1:
                         bpy.app.handlers.scene_update_pre.append(
-                            self_.scene_callback)
+                            self_.scene_update_callback)
 
     def unregister(self):
         if self.registered:
             self.registered = False
             self_ = self.global_instance()
-            self_.users -= 1
+            self_.users.remove(self)
+            # 不要なコールバックの削除
             if self.registered_load:
                 self.registered_load = False
-                self_.users_load -= 1
-                if self_.users_load == 0:
+                if not self_.users_load():
                     bpy.app.handlers.load_post.remove(self_.load_callback)
             if self.registered_scene_update:
                 self.registered_scene_update = False
-                self_.users_scene_update -= 1
-                if self_.users_scene_update == 0:
+                if not self_.users_scene_update():
                     bpy.app.handlers.scene_update_pre.remove(
-                        self_.scene_callback)
-            if self_.users == 0:
-                delattr(bpy.types.WindowManager, self.WM_ATTR)
+                        self_.scene_update_callback)
 
-    @bpy.app.handlers.persistent
-    def load_callback(self, scene):
-        import time
-        self_ = self.global_instance()
-        self_.save_time = time.time()
-        self_.failed_count = 0
+            # 入れ替え
+            wm_type, attr = self_.ATTR
+            if self_.users:
+                other = self_.users[0]
+                other.path = self_.path
+                other.save_time = self_.save_time
+                other.failed_count = self_.failed_count
+                other.users[:] = self_.users
+                if self_.users_load():
+                    bpy.app.handlers.load_post.remove(self_.load_callback)
+                    bpy.app.handlers.load_post.append(other.load_callback)
+                if self_.users_scene_update():
+                    bpy.app.handlers.scene_update_pre.remove(
+                        self_.scene_update_callback)
+                    bpy.app.handlers.scene_update_pre.append(
+                        other.scene_update_callback)
+                setattr(wm_type, attr, other)
+            else:
+                delattr(wm_type, attr)
 
-    @bpy.app.handlers.persistent
-    def scene_callback(self, scene):
-        if not is_main_loop_scene_update(bpy.context, scene):
-            return
-        self.save(bpy.context)
+    @property
+    def load_callback(self):
+        # persistentのデコレート対象は関数限定(メソッド不可)で、一番外側で
+        # デコレートしていないと無意味って事でわざわざこんな事してる。
+        if not self._load_callback:
+            @bpy.app.handlers.persistent
+            def load_callback(scene):
+                import time
+                self_ = self.global_instance()
+                self_.save_time = time.time()
+                self_.failed_count = 0
+            self._load_callback = load_callback
+        return self._load_callback
+
+    @property
+    def scene_update_callback(self):
+        if not self._scene_update_callback:
+            @bpy.app.handlers.persistent
+            def scene_update_callback(scene):
+                if is_main_loop_scene_update(bpy.context, scene):
+                    self_ = self.global_instance()
+                    self_.save(bpy.context)
+            self._scene_update_callback = scene_update_callback
+        return self._scene_update_callback
 
     def __init__(self):
         import logging
@@ -1956,17 +1992,18 @@ class AutoSaveManager:
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
-        self.users = 0
-        self.users_load = 0
-        self.users_scene_update = 0
+        self.users = []
+
+        self.path = ''
+        self.save_time = time.time()
+        self.failed_count = 0
 
         self.registered = False
         self.registered_load = False
         self.registered_scene_update = False
 
-        self.path = ''
-        self.save_time = time.time()
-        self.failed_count = 0
+        self._load_callback = None
+        self._scene_update_callback = None
 
     def save(self, context):
         """
