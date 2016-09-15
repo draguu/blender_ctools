@@ -33,6 +33,7 @@ bl_info = {
 from contextlib import contextmanager
 import fnmatch
 import importlib
+import os
 import math
 
 import bpy
@@ -48,7 +49,7 @@ except NameError:
 
 PIXEL_SIZE = 1.0
 
-_RELEASE = False
+RELEASE = 'LOCAL.txt' not in os.listdir(os.path.dirname(__file__))
 
 
 ###############################################################################
@@ -1436,7 +1437,8 @@ def scene_update_pre(scene):
 @bpy.app.handlers.persistent
 def load_handler(dummy):
     prefs = MouseGesturePreferences.get_instance()
-    prefs.ensure_operator_args()
+    if prefs:
+        prefs.ensure_operator_args()
 
 
 @MouseGesturePreferences.module_register
@@ -1452,10 +1454,10 @@ def register():
     if kc:
         km = kc.keymaps.new('3D View', space_type='VIEW_3D',
                             region_type='WINDOW', modal=False)
-        if _RELEASE:
+        if RELEASE:
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       head=True)
-            kmi.properties.group = 'View'
+            kmi.properties.group = 'Transform'
         else:
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       shift=True, head=True)

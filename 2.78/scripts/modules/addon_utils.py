@@ -37,11 +37,6 @@ addons_fake_modules = {}
 
 
 class AddonRegisterInfo:
-    if 'DYNAMIC_PROPERTY_ATTR' in globals():
-        DYNAMIC_PROPERTY_ATTR = DYNAMIC_PROPERTY_ATTR
-    else:
-        DYNAMIC_PROPERTY_ATTR = ''
-
     @staticmethod
     def name_mangling(class_name, attr):
         if not attr.startswith('__') or attr.endswith('__'):
@@ -197,29 +192,15 @@ class AddonRegisterInfo:
 
     @classmethod
     def get_instance(cls):
-        """AddonPreferencesのインスタンスを返す。二階層までしか対応しない。
+        """AddonPreferencesのインスタンスを返す。
         :rtype: AddonPreferences
         """
-        if 0:
-            name = cls.bl_idname
-            attrs = name.split('.')
-            prefs = _bpy.context.user_preferences.addons[attrs[0]].preferences
-            for attr in attrs[1:]:
-                prefs = getattr(prefs, attr)
-            return prefs
-
         U = _bpy.context.user_preferences
-        if '.' in cls.bl_idname:
-            # ctools以外での使用を想定していない
-            base_name, sub_name = cls.bl_idname.split('.')
-            base_prefs = U.addons[base_name].preferences
-            if cls.DYNAMIC_PROPERTY_ATTR:
-                addons = getattr(base_prefs, cls.DYNAMIC_PROPERTY_ATTR)
-                return getattr(addons, sub_name)
-            else:
-                return getattr(base_prefs, sub_name)
-        else:
-            return U.addons[cls.bl_idname].preferences
+        attrs = cls.bl_idname.split('.')
+        prefs = U.addons[attrs[0]].preferences
+        for attr in attrs[1:]:
+            prefs = getattr(prefs, attr)
+        return prefs
 
     @staticmethod
     def __verify_keyconfigs():

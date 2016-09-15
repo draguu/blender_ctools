@@ -204,28 +204,6 @@ class RegionRulerPreferences(
 #                 return obj
 
 
-def get_dynamic_property():
-    addons = bpy.context.user_preferences.addons
-    if __name__ not in addons:  # wm.read_factory_settings()
-        return None
-    prefs = addons[__name__].preferences
-    return getattr(prefs, DYNAMIC_PROPERTY_ATTR)
-
-
-def get_addon_preferences(name=''):
-    """
-    :param name: 指定するとctoolsではなく、そのサブモジュールの物を返す
-    :rtype: bpy.types.AddonPreferences
-    """
-    addons = bpy.context.user_preferences.addons
-    if __name__ not in addons:  # wm.read_factory_settings()
-        return None
-    if name:
-        return getattr(get_dynamic_property(), name, None)
-    else:
-        return addons[__name__].preferences
-
-
 def register_submodule(mod):
     if not hasattr(mod, '__addon_enabled__'):
         mod.__addon_enabled__ = False
@@ -272,6 +250,34 @@ _CToolsPreferences = type(
 
 class CToolsPreferences(_CToolsPreferences, bpy.types.AddonPreferences):
     bl_idname = __name__
+
+    def __getattribute__(self, name):
+        if name in fake_modules:
+            p = super().__getattribute__(DYNAMIC_PROPERTY_ATTR)
+            return getattr(p, name)
+        else:
+            return super().__getattribute__(name)
+
+    def __setattr__(self, name, value):
+        if name in fake_modules:
+            # ここでのvalueは、bpy.props.PointerProperty()等の返り値である事。
+            p = getattr(self, DYNAMIC_PROPERTY_ATTR)
+            setattr(p.__class__, name, value)
+        else:
+            super().__setattr__(name, value)
+
+    def __delattr__(self, name):
+        if name in fake_modules:
+            p = getattr(self, DYNAMIC_PROPERTY_ATTR)
+            return delattr(p.__class__, name)
+        else:
+            return super().__delattr__(name)
+
+    def __dir__(self):
+        attrs = list(super().__dir__())
+        p = super().__getattribute__(DYNAMIC_PROPERTY_ATTR)
+        attrs.extend([name for name in fake_modules if hasattr(p, name)])
+        return attrs
 
     align_box_draw = bpy.props.BoolProperty(
             name='Box Draw',
@@ -344,7 +350,7 @@ class CToolsPreferences(_CToolsPreferences, bpy.types.AddonPreferences):
                 # 詳細・設定値
                 if getattr(self, 'use_' + mod_name):
                     try:
-                        prefs = get_addon_preferences(mod_name)
+                        prefs = getattr(self, mod_name)
                     except:
                         traceback.print_exc()
                         continue
@@ -596,7 +602,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    prefs = get_addon_preferences()
+    prefs = bpy.context.user_preferences.addons[__name__].preferences
 
     for name, fake_mod in fake_modules.items():
         if getattr(prefs, 'use_' + name):
@@ -609,14 +615,16 @@ def register():
 
 
 def unregister():
-    prefs = get_addon_preferences()
-    for name, fake_mod in fake_modules.items():
-        if getattr(prefs, 'use_' + name):
-            try:
-                mod = importlib.import_module(fake_mod.__name__)
-                unregister_submodule(mod)
-            except:
-                traceback.print_exc()
+    U = bpy.context.user_preferences
+    if __name__ in U.addons:  # wm.read_factory_settings()の際に偽となる
+        prefs = U.addons[__name__].preferences
+        for name, fake_mod in fake_modules.items():
+            if getattr(prefs, 'use_' + name):
+                try:
+                    mod = importlib.import_module(fake_mod.__name__)
+                    unregister_submodule(mod)
+                except:
+                    traceback.print_exc()
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

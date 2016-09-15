@@ -21,56 +21,37 @@ import bpy
 _bpy = bpy  # addon_utils.py用
 
 
-# 現在未使用
-# def get_addon_preferences(name):
-#     """AddonPreferencesのインスタンスを返す
-#     :param name: モジュール名。 e.g. 'ctools', 'ctools.quadview_move'
-#     :type name: str
-#     :rtype: AddonPreferences
-#     """
-#     attrs = name.split('.')
-#     prefs = bpy.context.user_preferences.addons[attrs[0]].preferences
-#     for attr in attrs[1:]:
-#         prefs = getattr(prefs, attr)
-#     return prefs
-
-
-DYNAMIC_PROPERTY_ATTR = 'dynamic_property'
-
-
 class AddonPreferences:
-    DYNAMIC_PROPERTY_ATTR = DYNAMIC_PROPERTY_ATTR
-
     @classmethod
     def get_instance(cls):
-        """AddonPreferencesのインスタンスを返す。二階層までしか対応しない。
+        """AddonPreferencesのインスタンスを返す。
         :rtype: AddonPreferences
         """
         U = bpy.context.user_preferences
-        if '.' in cls.bl_idname:
-            base_name, sub_name = cls.bl_idname.split('.')
-            base_prefs = U.addons[base_name].preferences
-            addons = getattr(base_prefs, cls.DYNAMIC_PROPERTY_ATTR)
-            return getattr(addons, sub_name)
-        else:
-            return U.addons[cls.bl_idname].preferences
+        attrs = cls.bl_idname.split('.')
+        if attrs[0] not in U.addons:  # wm.read_factory_settings()
+            return None
+        prefs = U.addons[attrs[0]].preferences
+        for attr in attrs[1:]:
+            prefs = getattr(prefs, attr)
+        return prefs
 
     @classmethod
     def register(cls):
         if '.' in cls.bl_idname:
-            # 親オブジェクトへの登録。二階層までしか対応しない。
+            # 親オブジェクトへの登録。
             # ctools以外での使用を想定していない
             U = bpy.context.user_preferences
-            base_name, sub_name = cls.bl_idname.split('.')
-            base_prefs = U.addons[base_name].preferences
-            prop = getattr(base_prefs.__class__, cls.DYNAMIC_PROPERTY_ATTR)
-            # >>> prop
-            # (<built-in function PointerProperty>,
-            #  {'type': <class 'ctools.CToolsDynamicProperty'>,
-            #  'attr': 'dynamic_property'})
-            target_class = prop[1]['type']
+            attrs = cls.bl_idname.split('.')
+            base_prop = U.addons[attrs[0]].preferences
+            for attr in attrs[1:-1]:
+                base_prop = getattr(base_prop, attr)
             prop = bpy.props.PointerProperty(type=cls)
-            setattr(target_class, sub_name, prop)
+
+            if isinstance(base_prop, bpy.types.PropertyGroup):  # 汎用
+                setattr(base_prop.__class__, attrs[-1], prop)
+            else:  # ctools用
+                setattr(base_prop, attrs[-1], prop)
 
         c = super()
         if hasattr(c, 'register'):
@@ -80,13 +61,16 @@ class AddonPreferences:
     def unregister(cls):
         if '.' in cls.bl_idname:
             # 親オブジェクトからの登録解除。
-            # 二階層までしか対応しない。ctools以外での使用を想定していない
+            # ctools以外での使用を想定していない
             U = bpy.context.user_preferences
-            base_name, sub_name = cls.bl_idname.split('.')
-            base_prefs = U.addons[base_name].preferences
-            prop = getattr(base_prefs.__class__, cls.DYNAMIC_PROPERTY_ATTR)
-            target_class = prop[1]['type']
-            delattr(target_class, sub_name)
+            attrs = cls.bl_idname.split('.')
+            base_prop = U.addons[attrs[0]].preferences
+            for attr in attrs[1:-1]:
+                base_prop = getattr(base_prop, attr)
+            if isinstance(base_prop, bpy.types.PropertyGroup):  # 汎用
+                delattr(base_prop.__class__, attrs[-1])
+            else:  # ctools用
+                delattr(base_prop, attrs[-1])
 
         c = super()
         if hasattr(c, 'unregister'):
@@ -364,11 +348,6 @@ def operator_call(op, *args, _scene_update=True, **kw):
 
 
 class AddonRegisterInfo:
-    if 'DYNAMIC_PROPERTY_ATTR' in globals():
-        DYNAMIC_PROPERTY_ATTR = DYNAMIC_PROPERTY_ATTR
-    else:
-        DYNAMIC_PROPERTY_ATTR = ''
-
     @staticmethod
     def name_mangling(class_name, attr):
         if not attr.startswith('__') or attr.endswith('__'):
@@ -524,29 +503,15 @@ class AddonRegisterInfo:
 
     @classmethod
     def get_instance(cls):
-        """AddonPreferencesのインスタンスを返す。二階層までしか対応しない。
+        """AddonPreferencesのインスタンスを返す。
         :rtype: AddonPreferences
         """
-        if 0:
-            name = cls.bl_idname
-            attrs = name.split('.')
-            prefs = _bpy.context.user_preferences.addons[attrs[0]].preferences
-            for attr in attrs[1:]:
-                prefs = getattr(prefs, attr)
-            return prefs
-
         U = _bpy.context.user_preferences
-        if '.' in cls.bl_idname:
-            # ctools以外での使用を想定していない
-            base_name, sub_name = cls.bl_idname.split('.')
-            base_prefs = U.addons[base_name].preferences
-            if cls.DYNAMIC_PROPERTY_ATTR:
-                addons = getattr(base_prefs, cls.DYNAMIC_PROPERTY_ATTR)
-                return getattr(addons, sub_name)
-            else:
-                return getattr(base_prefs, sub_name)
-        else:
-            return U.addons[cls.bl_idname].preferences
+        attrs = cls.bl_idname.split('.')
+        prefs = U.addons[attrs[0]].preferences
+        for attr in attrs[1:]:
+            prefs = getattr(prefs, attr)
+        return prefs
 
     @staticmethod
     def __verify_keyconfigs():
