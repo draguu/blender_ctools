@@ -1674,6 +1674,8 @@ class AddonRegisterInfo:
                         def draw(self, context):
                             instance.draw(context, layout=self.layout)
                     addon_prefs_class.draw = draw
+                    # TODO: 衝突の危険あり
+                    addon_prefs_class._register_info = instance
 
                 else:
                     def draw(self, context):
@@ -1753,6 +1755,7 @@ class AddonRegisterInfo:
                         prefs_class.draw = prefs_class.draw._draw
                     else:
                         delattr(prefs_class, 'draw')
+                    delattr(prefs_class, '_register_info')
 
                 instance.unregister()
 
