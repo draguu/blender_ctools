@@ -45,13 +45,15 @@ import bpy
 from mathutils import Vector
 
 try:
-    importlib.reload(utils)
-    importlib.reload(structures)
     importlib.reload(listvalidkeys)
+    importlib.reload(registerinfo)
+    importlib.reload(structures)
+    importlib.reload(utils)
 except NameError:
-    from . import utils
-    from . import structures
     from .. import listvalidkeys
+    from . import registerinfo
+    from . import structures
+    from . import utils
 
 
 OPERATOR_PRIORITY = [
@@ -122,7 +124,7 @@ KeyPad = type('KeyPad', (), name_space)
 
 class EmulateNumpadPreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         KeyPad,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):

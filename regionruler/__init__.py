@@ -73,6 +73,7 @@ from bpy.app.handlers import persistent
 # import va.vamath as vam
 # from va.unitsystem import UnitSystem
 try:
+    importlib.reload(registerinfor)
     importlib.reload(unitsystem)
     importlib.reload(utils)
     importlib.reload(vagl)
@@ -81,6 +82,7 @@ try:
     importlib.reload(vav)
     importlib.reload(vawm)
 except NameError:
+    from . import registerinfo
     from . import unitsystem
     from . import utils
     from . import vagl
@@ -286,6 +288,7 @@ space_prop = utils.SpaceProperty(
 
 class RegionRulerPreferences(
         utils.AddonPreferences,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     def draw_property(self, attr, layout, text=None, skip_hidden=True,
@@ -424,6 +427,8 @@ class RegionRulerPreferences(
         # self.draw_property('view_depth', col)
         self.draw_property('use_fill', col)
         self.draw_property('auto_save', col)
+
+        super().draw(context, self.layout)
 
 
 ###############################################################################
@@ -2811,6 +2816,7 @@ def event_mco_region_mod_get(self):
         return None
 
 
+@RegionRulerPreferences.module_register
 def register():
     logger.debug('Register RegionRuler')
     # bpy.utils.register_module(__name__)
@@ -2840,6 +2846,7 @@ def register():
     # register()中ではbpy.contextが_RestrictContextになっているので不可
 
 
+@RegionRulerPreferences.module_unregister
 def unregister():
     logger.debug('Unregister RegionRuler')
     draw_handler_remove()

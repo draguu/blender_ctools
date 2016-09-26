@@ -48,9 +48,11 @@ import mathutils.geometry
 from mathutils import *
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(structures)
     importlib.reload(utils)
 except NameError:
+    from . import registerinfo
     from . import structures
     from . import utils
 
@@ -66,7 +68,7 @@ class SearchMenuProperty(bpy.types.PropertyGroup):
 
 class SearchMenuPreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
 

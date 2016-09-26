@@ -53,8 +53,10 @@ import bmesh
 from mathutils import Vector
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(utils)
 except NameError:
+    from . import registerinfo
     from . import utils
 
 
@@ -801,7 +803,7 @@ def draw_header(self, context):
 ###############################################################################
 class LockCoordsPreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__

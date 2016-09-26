@@ -59,10 +59,12 @@ import blf
 import bpy.props
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(structures)
     importlib.reload(utils)
     importlib.reload(modalmanager)
 except NameError:
+    from . import registerinfo
     from . import utils
 from .modalmanager import ModalHandlerManager
 
@@ -72,7 +74,7 @@ from .modalmanager import ModalHandlerManager
 ###############################################################################
 class ScreenCastKeysPreferences(
     utils.AddonPreferences,
-    utils.AddonRegisterInfo,
+    registerinfo.AddonRegisterInfo,
     bpy.types.PropertyGroup if '.' in __name__ else
     bpy.types.AddonPreferences):
     bl_idname = __name__

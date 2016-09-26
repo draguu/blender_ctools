@@ -105,6 +105,7 @@ alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修�
 #### 2.77/scripts/startup/bl_ui/space_userpref.py  
 UserPreferencesのaddonの検索ボックスで、パスの区切り文字(linuxなら/)の後に正規表現でパターンを入力するとファイル名でフィルタリング出来る。  
 
-#### 2.77/scripts/modules/addon_utils.py  
-UserPreferencesでのaddon詳細表示で、addonが追加するショートカットとクラスを表示する。  
+#### 2.77/scripts/modules/addon_utils.py, 2.77/scripts/modules/_addon_register_info.py  
+UserPreferencesでのaddon詳細表示で、addonが追加するショートカット・クラス・パネルを表示する。  
+ショートカットとパネルの属性の変更が可能。Write(Restore)を押した後に Save User Settings で保存される。
 ![Image](images/keymaps.jpg)

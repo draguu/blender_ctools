@@ -39,8 +39,10 @@ from PIL import Image, ImageDraw
 import bpy
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(utils)
 except NameError:
+    from . import registerinfo
     from . import utils
 
 
@@ -215,7 +217,7 @@ def draw_circle(image, color, origin, offset, diameter, color_image=None,
 
 class UVGridPreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__

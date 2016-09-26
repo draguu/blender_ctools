@@ -42,9 +42,11 @@ import math
 import bpy
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(structures)
     importlib.reload(utils)
 except NameError:
+    from . import registerinfo
     from . import utils
 from .structures import *
 
@@ -55,7 +57,7 @@ MIN_SIZE = 5
 
 class QuadViewMovePreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__

@@ -43,11 +43,13 @@ import mathutils.geometry
 from mathutils import *
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(unitsystem)
     importlib.reload(utils)
     importlib.reload(vagl)
     importlib.reload(vaview3d)
 except NameError:
+    from . import registerinfo
     from . import unitsystem
     from . import utils
     from . import vagl
@@ -90,7 +92,7 @@ view_operators = [
 
 class QuickBooleanPreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
 

@@ -48,6 +48,7 @@ import mathutils
 from mathutils import Matrix, Vector
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(utils)
     importlib.reload(localutils)
     importlib.reload(va)
@@ -57,6 +58,7 @@ try:
     importlib.reload(memocoords)
     importlib.reload(tooldata)
 except NameError:
+    from . import registerinfo
     from . import utils
     from . import localutils
     from . import va
@@ -99,7 +101,7 @@ EPS = 1e-5
 ###############################################################################
 class AlignToolsPreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__

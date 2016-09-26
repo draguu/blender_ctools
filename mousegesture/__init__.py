@@ -42,8 +42,10 @@ import blf
 from mathutils import Vector
 
 try:
+    importlib.reload(registerinfo)
     importlib.reload(utils)
 except NameError:
+    from . import registerinfo
     from . import utils
 
 
@@ -733,7 +735,7 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 class MouseGesturePreferences(
         utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
