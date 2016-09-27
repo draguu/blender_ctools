@@ -288,9 +288,6 @@ class CToolsPreferences(_CToolsPreferences, bpy.types.AddonPreferences):
         layout = self.layout
         """:type: bpy.types.UILayout"""
 
-        context.window_manager['x'] = 100  # ok
-        # bpy.types.WindowManager.hoge = bpy.props.BoolProperty()
-
         for mod_name, fake_mod in fake_modules.items():
             info = fake_mod.bl_info
             column = layout.column(align=self.align_box_draw)
