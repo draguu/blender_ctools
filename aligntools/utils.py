@@ -506,7 +506,10 @@ class AutoSaveManager:
         import logging
         import time
 
-        self.logger = logger = logging.getLogger(__name__)
+        self.logger = logger = logging.getLogger(__name__).getChild(
+            self.__class__.__name__)
+        """:type: logging.Logger"""
+        logger.propagate = False
         logger.setLevel(logging.WARNING)
         handler = logging.StreamHandler()
         handler.setLevel(logging.NOTSET)
@@ -636,45 +639,3 @@ class AutoSaveManager:
             saved = True
         file_prefs.use_save_preview_images = use_save_preview
         return saved
-
-
-"""
-BKE_context.h:
-enum {
-    CTX_MODE_EDIT_MESH = 0,
-    CTX_MODE_EDIT_CURVE,
-    CTX_MODE_EDIT_SURFACE,
-    CTX_MODE_EDIT_TEXT,
-    CTX_MODE_EDIT_ARMATURE,
-    CTX_MODE_EDIT_METABALL,
-    CTX_MODE_EDIT_LATTICE,
-    CTX_MODE_POSE,
-    CTX_MODE_SCULPT,
-    CTX_MODE_PAINT_WEIGHT,
-    CTX_MODE_PAINT_VERTEX,
-    CTX_MODE_PAINT_TEXTURE,
-    CTX_MODE_PARTICLE,
-    CTX_MODE_OBJECT
-};
-
-context.c:
-static const char *data_mode_strings[] = {
-    "mesh_edit",
-    "curve_edit",
-    "surface_edit",
-    "text_edit",
-    "armature_edit",
-    "mball_edit",
-    "lattice_edit",
-    "posemode",
-    "sculpt_mode",
-    "weightpaint",
-    "vertexpaint",
-    "imagepaint",
-    "particlemode",
-    "objectmode",
-    NULL
-};
-
-
-"""
