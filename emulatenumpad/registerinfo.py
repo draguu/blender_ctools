@@ -23,6 +23,11 @@ import traceback
 import bpy
 
 
+try:
+    from .customproperty import PyCustomProperty
+except:
+    from _addon_customproperty import PyCustomProperty
+
 __all__ = ['AddonRegisterInfo']
 
 
