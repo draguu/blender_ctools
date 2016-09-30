@@ -233,6 +233,8 @@ def main(target, extract=False):
         fp.write(bl)
     if wrote_files:
         print('Overwrite with ' + ', '.join(wrote_files))
+    elif not any([splash, splash2x, icons16, icons32]):
+        print('No image files')
 
     # write log file
     m = hashlib.md5()
