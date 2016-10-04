@@ -523,14 +523,18 @@ class _AddonPanelSetting(_Registerable, bpy.types.PropertyGroup):
     bl_idname = bpy.props.StringProperty(
         get=lambda self: self.name)
 
+    prop = bpy.types.Panel.bl_rna.properties['bl_label']
     bl_label = bpy.props.StringProperty(
-        name='Lable',
+        name=prop.name,
+        description=prop.description,
         update=_panel_prop_update_func('bl_label'),
     )
 
     # NOTE: bl_categoryとbl_contextは省略可能属性
+    prop = bpy.types.Panel.bl_rna.properties['bl_category']
     bl_category = bpy.props.StringProperty(
-        name='bl_category',
+        name=prop.name,
+        description=prop.description,
         update=_panel_prop_update_func('bl_category'),
     )
 
@@ -574,9 +578,10 @@ class _AddonPanelSetting(_Registerable, bpy.types.PropertyGroup):
         NULL
     };
     """
+    prop = bpy.types.Panel.bl_rna.properties['bl_space_type']
     bl_space_type = bpy.props.EnumProperty(
-        name='',
-        description='',
+        name=prop.name,
+        description=prop.description,
         items=(
             # ('EMPTY', 'Empty', ''),
             ('VIEW_3D', '3D View', '3D viewport'),
@@ -614,20 +619,21 @@ class _AddonPanelSetting(_Registerable, bpy.types.PropertyGroup):
         default='VIEW_3D',
         update=_panel_prop_update_func('bl_space_type'),
     )
+    prop = bpy.types.Panel.bl_rna.properties['bl_region_type']
     bl_region_type = bpy.props.EnumProperty(
-        name='Region Type',
-        description='The region where the panel is going to be used in',
+        name=prop.name,
+        description=prop.description,
         items=_panel_prop_bl_region_type_items,
         update=_panel_prop_update_func('bl_region_type'),
     )
+    prop = bpy.types.Panel.bl_rna.properties['bl_context']
     bl_context = bpy.props.EnumProperty(
-        name='Context',
-        description='The context in which the panel belongs to. '
-                    '(TODO: explain the possible combinations '
-                    'bl_context/bl_region_type/bl_space_type)',
+        name=prop.name,
+        description=prop.description,
         items=_panel_prop_bl_context_items,
         update=_panel_prop_update_func('bl_context'),
     )
+    del prop
 
 
 _AddonPanelSetting.__name__ = 'AddonPanelSetting'
