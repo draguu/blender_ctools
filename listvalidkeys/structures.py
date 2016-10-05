@@ -109,9 +109,9 @@ def _get_malloc_calloc_free():
         free.argtypes = [c_void_p]
     elif p == 'windows':
         malloc = cdll.msvcrt.malloc
-        malloc.restype = POINTER(c_ubyte)
+        malloc.restype = c_void_p
         calloc = cdll.msvcrt.calloc
-        calloc.restype = POINTER(c_ubyte)
+        calloc.restype = c_void_p
         free = cdll.msvcrt.free
         free.argtypes = [c_void_p]
     else:  # 'darwin'
