@@ -64,6 +64,11 @@
 ![Image](images/uvgrid.jpg)
 
 
+## Region Panel Categories
+アクティブなタブの取得と切り替えの為、bpy.types.Regionにpanel_categoriesとactive_panel_category属性を追加する。  
+linuxとwindowsでのみ動作する。windowsは動作が不安定になる可能性がある。
+
+
 ## その他
 ### patch/ui_layout_box.patch
 alignが真の状態のUILayoutでbox描画に不具合が起こる問題を修正するパッチ。  
