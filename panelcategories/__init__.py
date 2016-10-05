@@ -119,7 +119,7 @@ def UI_panel_category_find(ar, idname):
     :rtype: PanelCategoryDyn
     """
     prefs = TabSwitcherPreferences.get_instance()
-    if prefs.use_c_functions:
+    if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_find
         func.argtypes = [c_void_p, c_char_p]
         func.restype = c_void_p
@@ -140,7 +140,7 @@ def UI_panel_category_active_find(ar, idname):
     :rtype: PanelCategoryStack
     """
     prefs = TabSwitcherPreferences.get_instance()
-    if prefs.use_c_functions:
+    if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_active_find
         func.argtypes = [c_void_p, c_char_p]
         func.restype = c_void_p
@@ -161,7 +161,7 @@ def UI_panel_category_active_get(ar, set_fallback=False):
     :rtype: bytes
     """
     prefs = TabSwitcherPreferences.get_instance()
-    if prefs.use_c_functions:
+    if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_active_get
         func.argtypes = [c_void_p, c_bool]
         func.restype = c_char_p
@@ -191,7 +191,7 @@ def UI_panel_category_active_set(ar, idname):
     :type idname: bytes
     """
     prefs = TabSwitcherPreferences.get_instance()
-    if prefs.use_c_functions:
+    if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_active_set
         func.argtypes = [c_void_p, c_char_p]
         func(addressof(ar), idname)
