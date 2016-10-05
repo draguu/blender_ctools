@@ -66,7 +66,7 @@
 
 ## Region Panel Categories
 アクティブなタブの取得と切り替えの為、bpy.types.Regionにpanel_categoriesとactive_panel_category属性を追加する。  
-linuxとwindowsでのみ動作する。windowsは動作が不安定になる可能性がある。
+linuxでのみ動作する。
 
 
 ## その他

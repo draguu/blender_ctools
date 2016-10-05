@@ -25,7 +25,7 @@ bl_info = {
     # 'location': 'Screen',
     'description': "Add 'bpy.types.Region.panel_categories' and "
                    "'bpy.types.Region.active_panel_category'",
-    'warning': '',
+    'warning': 'Linux only',
     'wiki_url': '',
     'tracker_url': '',
     'category': 'User Interface',
