@@ -38,7 +38,9 @@
 import ctypes
 from ctypes import CDLL, Structure, Union, POINTER, addressof, cast, \
     c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
-    py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE, byref
+    py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE, byref, \
+    sizeof, c_ubyte, cdll
+from ctypes.util import find_library
 import numpy as np
 import platform
 import re
@@ -93,6 +95,87 @@ def set_fields(cls, *field_items):
 
 
 ###############################################################################
+# メモリ操作
+###############################################################################
+def _get_malloc_calloc_free():
+    p = platform.platform().split('-')[0].lower()
+    if p == 'linux':
+        libc = CDLL(find_library('c'))
+        malloc = libc.malloc
+        malloc.restype = c_void_p
+        calloc = libc.calloc
+        calloc.restype = c_void_p
+        free = libc.free
+        free.argtypes = [c_void_p]
+    elif p == 'darwin':
+        malloc = cdll.msvcrt.malloc
+        malloc.restype = POINTER(c_ubyte)
+        calloc = cdll.msvcrt.calloc
+        calloc.restype = POINTER(c_ubyte)
+        free = cdll.msvcrt.free
+        free.argtypes = [c_void_p]
+    else:  # 'darwin'
+        malloc = calloc = free = None
+    return malloc, calloc, free
+
+
+malloc, calloc, free = _get_malloc_calloc_free()
+
+
+class MemHead(Structure):
+    _fields_ = [
+        ('len', c_ssize_t),
+    ]
+
+
+def _SIZET_ALIGN_4(length):
+    return (length + 3) // 4 * 4
+
+
+def MEM_freeN(vmemh):
+    """mallocn_lockfree_impl.c: 132: MEM_lockfree_freeN"""
+    # TODO: 未完成
+
+
+def MEM_callocN(length):
+    """mallocn_lockfree_impl.c: 280: MEM_lockfree_callocN
+    :type length: int
+    :rtype: int
+    """
+    length = _SIZET_ALIGN_4(length)
+    memh_p = calloc(1, length + sizeof(MemHead))
+    if memh_p:
+        memh = cast(c_void_p(memh_p), POINTER(MemHead)).contents
+        memh.len = length
+        # 以下の関数は再現不可
+        # atomic_add_u(&totblock, 1);
+        # atomic_add_z(&mem_in_use, len);
+        # update_maximum(&peak_mem, mem_in_use);
+        return memh_p + sizeof(MemHead)
+    else:
+        return None
+
+
+def MEM_mallocN(length):
+    """mallocn_lockfree_impl.c: 301: MEM_lockfree_mallocN
+    :type length: int
+    :rtype: int
+    """
+    length = _SIZET_ALIGN_4(length)
+    memh_p = calloc(1, length + sizeof(MemHead))
+    if memh_p:
+        memh = cast(c_void_p(memh_p), POINTER(MemHead)).contents
+        memh.len = length
+        # 以下の関数は再現不可
+        # atomic_add_u(&totblock, 1);
+        # atomic_add_z(&mem_in_use, len);
+        # update_maximum(&peak_mem, mem_in_use);
+        return memh_p + sizeof(MemHead)
+    else:
+        return None
+
+
+###############################################################################
 # blenkernel / makesdna / windowmanager/ editors
 ###############################################################################
 class Link(Structure):
@@ -108,6 +191,14 @@ class ListBase(Structure):
     _fields_ = fields(
         c_void_p, 'first', 'last',
     )
+
+    def __len__(self):
+        link_p = cast(c_void_p(self.first), POINTER(Link))
+        i = 0
+        while link_p:
+            i += 1
+            link_p = link_p.contents.next
+        return i
 
     def remove(self, vlink):
         """
@@ -202,8 +293,16 @@ class ListBase(Structure):
             }
         }
         """
-        prevlink = vprevlink
-        newlink = vnewlink
+        if vprevlink:
+            prevlink = cast(c_void_p(addressof(vprevlink)),
+                            POINTER(Link)).contents
+        else:
+            prevlink = None
+        if vnewlink:
+            newlink = cast(c_void_p(addressof(vnewlink)),
+                           POINTER(Link)).contents
+        else:
+            newlink = None
 
         if not newlink:
             return
@@ -236,6 +335,37 @@ class ListBase(Structure):
 
     def insert(self, i, vlink):
         self.insert_after(self.find(i - 1), vlink)
+
+    def find_string(self, identifier, offset):
+        """
+        void *BLI_findstring(const ListBase *listbase, const char *id, const int offset)
+        {
+            Link *link = NULL;
+            const char *id_iter;
+
+            for (link = listbase->first; link; link = link->next) {
+                id_iter = ((const char *)link) + offset;
+
+                if (id[0] == id_iter[0] && STREQ(id, id_iter)) {
+                    return link;
+                }
+            }
+
+            return NULL;
+        }
+
+        :type identifier: bytes
+        :type offset: int
+        :rtype: int | None
+        """
+        link_p = cast(c_void_p(self.first), POINTER(Link))
+        while link_p:
+            link_addr = addressof(link_p.contents)
+            id_iter = cast(c_void_p(link_addr + offset), c_char_p).value
+            if identifier[0] == id_iter[0] and identifier == id_iter:
+                return link_addr
+            link_p = link_p.contents.next
+        return None
 
     def test(self):
         link1 = Link()

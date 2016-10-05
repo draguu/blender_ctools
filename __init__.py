@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
-    'version': (1, 4),
-    'blender': (2, 77, 0),
+    'version': (1, 5),
+    'blender': (2, 78, 0),
     'location': '',
     'description': 'Collection of add-ons',
     'warning': '',
@@ -65,6 +65,7 @@ sub_module_names = [
     'aligntools',
     'emulatenumpad',
     'uvgrid',
+    'panelcategories',
 ]
 
 
