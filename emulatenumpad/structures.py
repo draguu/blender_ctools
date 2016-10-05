@@ -107,7 +107,7 @@ def _get_malloc_calloc_free():
         calloc.restype = c_void_p
         free = libc.free
         free.argtypes = [c_void_p]
-    elif p == 'darwin':
+    elif p == 'windows':
         malloc = cdll.msvcrt.malloc
         malloc.restype = POINTER(c_ubyte)
         calloc = cdll.msvcrt.calloc
