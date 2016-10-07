@@ -57,7 +57,7 @@ classes = [
 
 
 def register():
-    ChildAddonPreferences.ensure_register()
+    ChildAddonPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

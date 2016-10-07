@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Update Tag',
     'author': 'chromoly',
-    'version': (0, 3),
-    'blender': (2, 77, 0),
+    'version': (0, 3, 1),
+    'blender': (2, 78, 0),
     'location': '',
     'description': '',
     'wiki_url': 'https://github.com/chromoly/blender_update_tag',
@@ -43,14 +43,16 @@ import time
 import bpy
 
 try:
-    importlib.reload(utils)
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
 except NameError:
-    pass
-from . import utils
+    from . import addongroup
+    from . import registerinfo
 
 
 class UpdateTagPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -97,6 +99,9 @@ class UpdateTagPreferences(
         sub = col.column()
         sub.prop(self, 'sculpt_interval')
         sub.active = self.use_sculpt
+
+        layout.separator()
+        super().draw(context)
 
 
 class MATERIAL_PT_driver_update_tag(bpy.types.Panel):
@@ -423,7 +428,9 @@ classes = [
 ]
 
 
+@UpdateTagPreferences.module_register
 def register():
+    UpdateTagPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 
@@ -435,6 +442,7 @@ def register():
     bpy.app.handlers.scene_update_pre.append(callback_scene_update_pre)
 
 
+@UpdateTagPreferences.module_unregister
 def unregister():
     bpy.app.handlers.scene_update_pre.remove(callback_scene_update_pre)
 

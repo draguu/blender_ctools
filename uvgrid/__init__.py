@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Make UV Grid',
     'author': 'chromoly',
-    'version': (0, 1, 0),
-    'blender': (2, 77, 0),
+    'version': (0, 1, 1),
+    'blender': (2, 78, 0),
     'location': 'Image Editor > Header > Image > Make UV Grid',
     'description': 'Make UV grid image',
     'warning': "need 'Pillow' python module",
@@ -39,11 +39,11 @@ from PIL import Image, ImageDraw
 import bpy
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
-    importlib.reload(utils)
 except NameError:
+    from . import addongroup
     from . import registerinfo
-    from . import utils
 
 
 DEFAULT_PATTERN = 'CHECKER'  # 'CHECKER', 'CHECKER_CIRCLE', 'FULL'
@@ -216,14 +216,11 @@ def draw_circle(image, color, origin, offset, diameter, color_image=None,
 
 
 class UVGridPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
-
-    # def draw(self, context):
-    #     super().draw(context, self.layout)
 
 
 def make_uv_grid(
@@ -554,22 +551,6 @@ class OperatorUVGrid(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self)
 
 
-# class PanelUVGrid(bpy.types.Panel):
-#     bl_idname = 'IMAGE_PT_uv_grid'
-#     bl_label = 'Make UV Grid'
-#     bl_space_type = 'IMAGE_EDITOR'
-#     bl_region_type = 'UI'
-#
-#     @classmethod
-#     def poll(cls, context):
-#         return context.area and context.area.type == 'IMAGE_EDITOR'
-#
-#     def draw(self, context):
-#         layout = self.layout
-#         col = layout.column()
-#         col.operator(OperatorUVGrid.bl_idname, text='UV Grid')
-
-
 def menu_item(self, context):
     layout = self.layout
     col = layout.column()
@@ -579,12 +560,12 @@ def menu_item(self, context):
 classes = [
     UVGridPreferences,
     OperatorUVGrid,
-    # PanelUVGrid,
 ]
 
 
 @UVGridPreferences.module_register
 def register():
+    UVGridPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.IMAGE_MT_image.append(menu_item)

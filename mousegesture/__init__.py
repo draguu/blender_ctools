@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Mouse Gesture',
     'author': 'chromoly',
-    'version': (0, 7),
-    'blender': (2, 77, 0),
+    'version': (0, 7, 1),
+    'blender': (2, 78, 0),
     'location': 'UserPreferences > Add-ons > Mouse Gesture',
     'description': '',
     'warning': '',
@@ -42,11 +42,11 @@ import blf
 from mathutils import Vector
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
-    importlib.reload(utils)
 except NameError:
+    from . import addongroup
     from . import registerinfo
-    from . import utils
 
 
 PIXEL_SIZE = 1.0
@@ -734,7 +734,7 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 
 class MouseGesturePreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -801,7 +801,8 @@ class MouseGesturePreferences(
                           icon='ZOOMIN')
         op.function = 'group_add'
 
-        super().draw(context, self.layout)
+        layout.separator()
+        super().draw(context)
 
 
 ###############################################################################
@@ -1445,6 +1446,7 @@ def load_handler(dummy):
 
 @MouseGesturePreferences.module_register
 def register():
+    MouseGesturePreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

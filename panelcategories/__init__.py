@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Region Panel Categories',
     'author': 'chromoly',
-    'version': (0, 1),
+    'version': (0, 1, 1),
     'blender': (2, 78, 0),
     # 'location': 'Screen',
     'description': "Add 'bpy.types.Region.panel_categories' and "
@@ -37,12 +37,12 @@ import importlib
 import platform as _platform
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
     importlib.reload(structures)
-    importlib.reload(utils)
 except NameError:
+    from . import addongroup
     from . import registerinfo
-    from . import utils
 from .structures import *
 
 
@@ -58,7 +58,7 @@ else:
 
 
 class TabSwitcherPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -73,7 +73,8 @@ class TabSwitcherPreferences(
         col.enabled = platform == 'linux'
         col.prop(self, 'use_c_functions')
 
-        super().draw(context, self.layout)
+        layout.separator()
+        super().draw(context)
 
 
 class PanelCategoryDyn(Structure):
@@ -257,6 +258,7 @@ classes = [
 
 @TabSwitcherPreferences.module_register
 def register():
+    TabSwitcherPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

@@ -1756,7 +1756,8 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
         return t
 
     # draw ----------------------------------------------------------
-    def draw(self, context, layout=None, hierarchy=False, box=True):
+    def draw(self, context, layout=None, hierarchy=False, box=True,
+             draw_parent=True):
         """キーマップアイテムの一覧を描画。
         :param context: bpy.types.Context
         :param layout: bpy.types.UILayout
@@ -1819,6 +1820,14 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
             self._draw_addon_attributes(context, layout, box)
         if show_panels and addon_prop.default_panel_settings:
             self._draw_addon_panels(context, layout, box)
+
+        if draw_parent:
+            c = super()
+            if hasattr(c, 'draw'):
+                layout_bak = self.layout
+                self.layout = layout
+                c.draw(context)
+                self.layout = layout_bak
 
     # register / unregister -----------------------------------------
     @classmethod

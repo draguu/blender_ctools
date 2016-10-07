@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Edit Mesh Draw Nearest',
     'author': 'chromoly',
-    'version': (0, 4),
-    'blender': (2, 77, 0),
+    'version': (0, 4, 1),
+    'blender': (2, 78, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
     'wiki_url': 'https://github.com/chromoly/blender-EditMeshDrawNearest',
     'category': '3D View',
@@ -52,12 +52,16 @@ import blf
 # from bpy_extras.view3d_utils import location_3d_to_region_2d as project
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(structures)
     importlib.reload(utils)
+    importlib.reload(registerinfo)
 except NameError:
     pass
 from .structures import *
-from .utils import AddonPreferences, SpaceProperty, operator_call
+from . import addongroup
+from . import registerinfo
+from . import utils
 
 
 # glVertexへ渡すZ値。
@@ -77,7 +81,8 @@ def test_platform():
 # Addon Preferences
 ###############################################################################
 class DrawNearestPreferences(
-        AddonPreferences,
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -274,6 +279,9 @@ class DrawNearestPreferences(
         sub.active = test_platform()
         sub.prop(self, 'use_internal')
 
+        self.layout.separator()
+        super().draw(context)
+
 
 ###############################################################################
 # Space Property
@@ -287,7 +295,7 @@ class VIEW3D_PG_DrawNearest(bpy.types.PropertyGroup):
         name='Enable', update=update)
 
 
-space_prop = SpaceProperty(
+space_prop = utils.SpaceProperty(
     [bpy.types.SpaceView3D, 'drawnearest',
      VIEW3D_PG_DrawNearest])
 
@@ -2560,7 +2568,7 @@ def scene_update_pre(scene):
                     c = bpy.context.copy()
                     c['area'] = area
                     c['region'] = area.regions[-1]
-                    operator_call(
+                    utils.operator_call(
                         bpy.ops.view3d.draw_nearest_element,
                         c, 'INVOKE_DEFAULT', type='ENABLE',
                         _scene_update=False)
@@ -2586,7 +2594,9 @@ classes = [
 ]
 
 
+@DrawNearestPreferences.module_register
 def register():
+    DrawNearestPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     space_prop.register()
@@ -2596,6 +2606,7 @@ def register():
     bpy.app.handlers.load_pre.append(load_pre)
 
 
+@DrawNearestPreferences.module_unregister
 def unregister():
     bpy.app.handlers.scene_update_pre.remove(scene_update_pre)
     bpy.app.handlers.load_pre.remove(load_pre)

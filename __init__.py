@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
-    'version': (1, 5),
+    'version': (1, 6),
     'blender': (2, 78, 0),
     'location': '',
     'description': 'Collection of add-ons',
@@ -30,7 +30,6 @@ bl_info = {
 }
 
 
-from collections import OrderedDict
 import difflib
 import hashlib
 import importlib
@@ -38,379 +37,48 @@ import os
 import pathlib
 import platform
 import shutil
-import sys
-import traceback
 import tempfile
 import urllib.request
 import zipfile
 
+if 'bpy' in locals():
+    importlib.reload(addongroup)
+    CToolsPreferences.reload_sub_modules()
+else:
+    from . import addongroup
+
 import bpy
 
 
-sub_module_names = [
-    'quickboolean',
-    'drawnearest',
-    'lockcoords',
-    'lockcursor3d',
-    'mousegesture',
-    'overwrite_builtin_images',
-    'listvalidkeys',
-    'quadview_move',
-    'regionruler',
-    'screencastkeys',
-    # 'searchmenu',
-    'updatetag',
-    # 'floating_window',
-    'splashscreen',
-    'aligntools',
-    'emulatenumpad',
-    'uvgrid',
-    'panelcategories',
-]
+# def test_platform():
+#     return (platform.platform().split('-')[0].lower()
+#             not in {'darwin', 'windows'})
 
 
-# utils.pyの方でも定義されている
-DYNAMIC_PROPERTY_ATTR = 'dynamic_property'
-
-
-def fake_module(mod_name, mod_path, speedy=True, force_support=None):
-    """scripts/modules/addon_utils.pyのmodule_refresh関数の中からコピペ改変"""
-
-    import ast
-    ModuleType = type(ast)
-    try:
-        file_mod = open(mod_path, "r", encoding='UTF-8')
-    except OSError as e:
-        print("Error opening file %r: %s" % (mod_path, e))
-        return None
-
-    with file_mod:
-        if speedy:
-            lines = []
-            line_iter = iter(file_mod)
-            l = ""
-            while not l.startswith("bl_info"):
-                l = line_iter.readline()
-
-                if len(l) == 0:
-                    break
-            while l.rstrip():
-                lines.append(l)
-                l = line_iter.readline()
-
-            data = "".join(lines)
-
-        else:
-            data = file_mod.read()
-    del file_mod
-
-    try:
-        ast_data = ast.parse(data, filename=mod_path)
-    except:
-        print("Syntax error 'ast.parse' can't read %r" % mod_path)
-        import traceback
-        traceback.print_exc()
-        ast_data = None
-
-    body_info = None
-
-    if ast_data:
-        for body in ast_data.body:
-            if body.__class__ == ast.Assign:
-                if len(body.targets) == 1:
-                    if getattr(body.targets[0], "id", "") == "bl_info":
-                        body_info = body
-                        break
-
-    if body_info:
-        try:
-            mod = ModuleType(mod_name)
-            mod.bl_info = ast.literal_eval(body.value)
-            mod.__file__ = mod_path
-            mod.__time__ = os.path.getmtime(mod_path)
-        except:
-            print("AST error parsing bl_info for %s" % mod_name)
-            import traceback
-            traceback.print_exc()
-            raise
-
-        if force_support is not None:
-            mod.bl_info["support"] = force_support
-
-        return mod
-    else:
-        print("fake_module: addon missing 'bl_info' "
-              "gives bad performance!: %r" % mod_path)
-        return None
-
-
-def gen_fake_modules():
-    _fake_sub_modules = []  # __name__は'ctools.quickboolean'の様になる
-    for name in sub_module_names:
-        d = os.path.dirname(__file__)
-        mod = fake_module(__name__ + '.' + name,
-                          os.path.join(d, name, '__init__.py'))
-        if mod:
-            _fake_sub_modules.append(mod)
-    _fake_sub_modules.sort(
-        key=lambda mod: (mod.bl_info['category'], mod.bl_info['name']))
-
-    return OrderedDict(
-        [(mod.__name__.split('.')[-1], mod) for mod in _fake_sub_modules])
-
-
-fake_modules = gen_fake_modules()
-
-
-try:
-    # reload ?
-    _ = NAME
-    # reloaded !
-    for _fake_mod in fake_modules.values():
-        try:
-            if _fake_mod.__name__ in sys.modules:
-                _mod = importlib.import_module(_fake_mod.__name__)
-                importlib.reload(_mod)
-        except:
-            traceback.print_exc()
-except NameError:
-    # load first
-    pass
-
-
-NAME = 'ctools'
-
-UPDATE_DRY_RUN = False
-UPDATE_DIFF_TEXT = False
-
-
-"""
-サブモジュールでAddonPreferenceを使用する場合
-
-from .utils import AddonPreferences
-class RegionRulerPreferences(
-        AddonPreferences,
-        bpy.types.PropertyGroup if '.' in __name__ else
-        bpy.types.AddonPreferences):
-    ...
-
-"""
-
-
-# 未使用
-# def _get_pref_class(mod):
-#     for obj in vars(mod).values():
-#         if inspect.isclass(obj) and issubclass(obj, bpy.types.PropertyGroup):
-#             if hasattr(obj, 'bl_idname') and obj.bl_idname == mod.__name__:
-#                 return obj
-
-
-def register_submodule(mod):
-    if not hasattr(mod, '__addon_enabled__'):
-        mod.__addon_enabled__ = False
-    if not mod.__addon_enabled__:
-        mod.register()
-        mod.__addon_enabled__ = True
-
-
-def unregister_submodule(mod, clear_preferences=False):
-    if not hasattr(mod, '__addon_enabled__'):
-        mod.__addon_enabled__ = False
-    if mod.__addon_enabled__:
-        mod.unregister()
-        mod.__addon_enabled__ = False
-
-    if clear_preferences:
-        U = bpy.context.user_preferences
-        base_name, sub_name = mod.__name__.split('.')
-        base_prefs = U.addons[base_name].preferences
-        target_prop = getattr(base_prefs, DYNAMIC_PROPERTY_ATTR)
-        if sub_name in target_prop:
-            del target_prop[sub_name]
-
-
-def test_platform():
-    return (platform.platform().split('-')[0].lower()
-            not in {'darwin', 'windows'})
-
-
-class CToolsDynamicProperty(bpy.types.PropertyGroup):
-    """
-    bpy.types.AddonPreferencesを継承したクラスへ動的に属性を追加しても
-    インスタンスへは反映されない為、これ以下に属性を追加する。
-    """
-
-
-_CToolsPreferences = type(
-    '_CToolsPreferences',
-    (),
-    {DYNAMIC_PROPERTY_ATTR:
-         bpy.props.PointerProperty(type=CToolsDynamicProperty)}
-)
-
-
-class CToolsPreferences(_CToolsPreferences, bpy.types.AddonPreferences):
+class CToolsPreferences(addongroup.AddonGroupPreferences,
+                        bpy.types.AddonPreferences):
     bl_idname = __name__
 
-    def __getattribute__(self, name):
-        if name in fake_modules:
-            p = super().__getattribute__(DYNAMIC_PROPERTY_ATTR)
-            return getattr(p, name)
-        else:
-            return super().__getattribute__(name)
-
-    def __setattr__(self, name, value):
-        if name in fake_modules:
-            # ここでのvalueは、bpy.props.PointerProperty()等の返り値である事。
-            p = getattr(self, DYNAMIC_PROPERTY_ATTR)
-            setattr(p.__class__, name, value)
-        else:
-            super().__setattr__(name, value)
-
-    def __delattr__(self, name):
-        if name in fake_modules:
-            p = getattr(self, DYNAMIC_PROPERTY_ATTR)
-            return delattr(p.__class__, name)
-        else:
-            return super().__delattr__(name)
-
-    def __dir__(self):
-        attrs = list(super().__dir__())
-        p = super().__getattribute__(DYNAMIC_PROPERTY_ATTR)
-        attrs.extend([name for name in fake_modules if hasattr(p, name)])
-        return attrs
-
-    align_box_draw = bpy.props.BoolProperty(
-            name='Box Draw',
-            description='If applied patch: patch/ui_layout_box.patch',
-            default=False)
-
-    def draw(self, context):
-        layout = self.layout
-        """:type: bpy.types.UILayout"""
-
-        for mod_name, fake_mod in fake_modules.items():
-            info = fake_mod.bl_info
-            column = layout.column(align=self.align_box_draw)
-            box = column.box()
-
-            # 一段目
-            expand = getattr(self, 'show_expanded_' + mod_name)
-            icon = 'TRIA_DOWN' if expand else 'TRIA_RIGHT'
-            col = box.column()  # boxのままだと行間が広い
-            row = col.row()
-            sub = row.row()
-            sub.context_pointer_set('addon_prefs', self)
-            sub.alignment = 'LEFT'
-            op = sub.operator('wm.context_toggle', text='', icon=icon,
-                              emboss=False)
-            op.data_path = 'addon_prefs.show_expanded_' + mod_name
-            sub.label('{}: {}'.format(info['category'], info['name']))
-            sub = row.row()
-            sub.alignment = 'RIGHT'
-            if info.get('warning'):
-                sub.label('', icon='ERROR')
-            sub.prop(self, 'use_' + mod_name, text='')
-            # 二段目
-            if expand:
-                # col = box.column()  # boxのままだと行間が広い
-                # 参考: space_userpref.py
-                if info.get('description'):
-                    split = col.row().split(percentage=0.15)
-                    split.label('Description:')
-                    split.label(info['description'])
-                if info.get('location'):
-                    split = col.row().split(percentage=0.15)
-                    split.label('Location:')
-                    split.label(info['location'])
-                if info.get('author') and info.get('author') != 'chromoly':
-                    split = col.row().split(percentage=0.15)
-                    split.label('Author:')
-                    split.label(info['author'])
-                if info.get('version'):
-                    split = col.row().split(percentage=0.15)
-                    split.label('Version:')
-                    split.label('.'.join(str(x) for x in info['version']),
-                                translate=False)
-                if info.get('warning'):
-                    split = col.row().split(percentage=0.15)
-                    split.label('Warning:')
-                    split.label('  ' + info['warning'], icon='ERROR')
-
-                tot_row = int(bool(info.get('wiki_url')))
-                if tot_row:
-                    split = col.row().split(percentage=0.15)
-                    split.label(text='Internet:')
-                    if info.get('wiki_url'):
-                        op = split.operator('wm.url_open',
-                                            text='Documentation', icon='HELP')
-                        op.url = info.get('wiki_url')
-                    for i in range(4 - tot_row):
-                        split.separator()
-
-                # 詳細・設定値
-                if getattr(self, 'use_' + mod_name):
-                    try:
-                        prefs = getattr(self, mod_name)
-                    except:
-                        traceback.print_exc()
-                        continue
-                    if prefs and hasattr(prefs, 'draw'):
-                        if self.align_box_draw:
-                            box = column.box()
-                        else:
-                            box = box.column()
-                        if mod_name == 'overwrite_builtin_images':
-                            if not test_platform():
-                                box.active = False
-                        prefs.layout = box
-                        try:
-                            prefs.draw(context)
-                        except:
-                            traceback.print_exc()
-                            box.label(text='Error (see console)', icon='ERROR')
-                        del prefs.layout
-
-        row = layout.row()
-        sub = row.row()
-        sub.alignment = 'LEFT'
-        op = sub.operator('script.cutils_module_update',
-                     icon='FILE_REFRESH')
-        op.dry_run = UPDATE_DRY_RUN
-        op.diff = UPDATE_DIFF_TEXT
-        sub = row.row()
-        sub.alignment = 'RIGHT'
-        sub.prop(self, 'align_box_draw')
-
-    @classmethod
-    def init_attributes(cls):
-        for name, fake_mod in fake_modules.items():
-            info = fake_mod.bl_info
-
-            def gen_update(fake_mod):
-                def update(self, context):
-                    name = fake_mod.__name__.split('.')[-1]
-                    try:
-                        mod = importlib.import_module(fake_mod.__name__)
-                        if getattr(self, 'use_' + name):
-                            register_submodule(mod)
-                        else:
-                            unregister_submodule(mod, True)
-                    except:
-                        # setattr(self, 'use_' + name, False)
-                        traceback.print_exc()
-                return update
-
-            prop = bpy.props.BoolProperty(
-                name=info['name'],
-                description=info.get('description', '').rstrip('.'),
-                update=gen_update(fake_mod),
-            )
-            setattr(CToolsPreferences, 'use_' + name, prop)
-            prop = bpy.props.BoolProperty()
-            setattr(CToolsPreferences, 'show_expanded_' + name, prop)
-
-CToolsPreferences.init_attributes()
+    sub_modules = [
+        'quickboolean',
+        'drawnearest',
+        'lockcoords',
+        'lockcursor3d',
+        'mousegesture',
+        'overwrite_builtin_images',
+        'listvalidkeys',
+        'quadview_move',
+        'regionruler',
+        'screencastkeys',
+        # 'searchmenu',
+        'updatetag',
+        # 'floating_window',
+        'splashscreen',
+        'aligntools',
+        'emulatenumpad',
+        'uvgrid',
+        'panelcategories',
+    ]
 
 
 class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
@@ -593,39 +261,17 @@ class SCRIPT_OT_cutils_module_update(bpy.types.Operator):
 
 
 classes = [
-    CToolsDynamicProperty,
     CToolsPreferences,
     SCRIPT_OT_cutils_module_update,
 ]
 
 
 def register():
+    CToolsPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    prefs = bpy.context.user_preferences.addons[__name__].preferences
-
-    for name, fake_mod in fake_modules.items():
-        if getattr(prefs, 'use_' + name):
-            try:
-                mod = importlib.import_module(fake_mod.__name__)
-                register_submodule(mod)
-            except:
-                setattr(prefs, 'use_' + name, False)
-                traceback.print_exc()
-
 
 def unregister():
-    U = bpy.context.user_preferences
-    if __name__ in U.addons:  # wm.read_factory_settings()の際に偽となる
-        prefs = U.addons[__name__].preferences
-        for name, fake_mod in fake_modules.items():
-            if getattr(prefs, 'use_' + name):
-                try:
-                    mod = importlib.import_module(fake_mod.__name__)
-                    unregister_submodule(mod)
-                except:
-                    traceback.print_exc()
-
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Region Ruler',
     'author': 'chromoly',
-    'version': (2, 4),
-    'blender': (2, 77, 0),
+    'version': (2, 4, 1),
+    'blender': (2, 78, 0),
     'location': 'View3D > Properties, ImageEditor > Properties',
     'description': '',
     'warning': '',
@@ -73,6 +73,7 @@ from bpy.app.handlers import persistent
 # import va.vamath as vam
 # from va.unitsystem import UnitSystem
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfor)
     importlib.reload(unitsystem)
     importlib.reload(utils)
@@ -82,6 +83,7 @@ try:
     importlib.reload(vav)
     importlib.reload(vawm)
 except NameError:
+    from . import addongroup
     from . import registerinfo
     from . import unitsystem
     from . import utils
@@ -287,7 +289,7 @@ space_prop = utils.SpaceProperty(
 
 
 class RegionRulerPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -428,7 +430,7 @@ class RegionRulerPreferences(
         self.draw_property('use_fill', col)
         self.draw_property('auto_save', col)
 
-        super().draw(context, self.layout)
+        super().draw(context)
 
 
 ###############################################################################
@@ -2819,7 +2821,8 @@ def event_mco_region_mod_get(self):
 @RegionRulerPreferences.module_register
 def register():
     logger.debug('Register RegionRuler')
-    # bpy.utils.register_module(__name__)
+
+    RegionRulerPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     space_prop.register()

@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Align Tools',
     'author': 'chromoly',
-    'version': (0, 1, 1),
-    'blender': (2, 77, 0),
+    'version': (0, 1, 2),
+    'blender': (2, 78, 0),
     'location': 'View3D > Toolshelf',
     'description': '',
     'warning': '',
@@ -48,8 +48,8 @@ import mathutils
 from mathutils import Matrix, Vector
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
-    importlib.reload(utils)
     importlib.reload(localutils)
     importlib.reload(va)
     importlib.reload(enums)
@@ -58,8 +58,8 @@ try:
     importlib.reload(memocoords)
     importlib.reload(tooldata)
 except NameError:
+    from . import addongroup
     from . import registerinfo
-    from . import utils
     from . import localutils
     from . import va
     from . import enums
@@ -100,7 +100,7 @@ EPS = 1e-5
 # Preference
 ###############################################################################
 class AlignToolsPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -111,7 +111,7 @@ class AlignToolsPreferences(
 
         layout.prop(self, 'use_pie_menu')
 
-        super().draw(context, self.layout)
+        super().draw(context)
 
     def update_keymap_items(self, context=None):
         items = []
@@ -417,6 +417,7 @@ classes.extend(op_shift.classes)
 
 @AlignToolsPreferences.module_register
 def register():
+    AlignToolsPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

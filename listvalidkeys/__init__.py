@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'List Valid Keys',
     'author': 'chromoly',
-    'version': (0, 1, 0),
-    'blender': (2, 77, 0),
+    'version': (0, 1, 1),
+    'blender': (2, 78, 0),
     'location': 'Screen -> Shift + Ctrl + Alt + \\',
     'description': 'Print valid shortcut',
     'warning': '',
@@ -37,20 +37,20 @@ import importlib
 import bpy
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
     importlib.reload(structures)
-    importlib.reload(utils)
 except NameError:
+    from . import addongroup
     from . import registerinfo
     from . import structures
-    from . import utils
 
 
 TEXT_NAME = 'valid_shortcuts.txt'
 
 
 class ListValidKeysPreferences(
-    utils.AddonPreferences,
+    addongroup.AddonGroupPreferences,
     registerinfo.AddonRegisterInfo,
     bpy.types.PropertyGroup if '.' in __name__ else
     bpy.types.AddonPreferences):
@@ -73,7 +73,8 @@ class ListValidKeysPreferences(
         split.column()
         split.column()
 
-        super().draw(context, self.layout)
+        self.layout.separator()
+        super().draw(context)
 
 
 class wmKeyMap(ct.Structure):
@@ -415,6 +416,7 @@ classes = [
 
 @ListValidKeysPreferences.module_register
 def register():
+    ListValidKeysPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

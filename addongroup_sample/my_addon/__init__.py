@@ -71,7 +71,7 @@ classes = [
 def register():
     # AddonGroupPreferencesが依存するクラスがあるので、
     # それを先に登録する必要がある。
-    MyAddonPreferences.ensure_register()
+    MyAddonPreferences.register_pre()
 
     for cls in classes:
         bpy.utils.register_class(cls)

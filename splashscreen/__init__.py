@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Splash Screen',
     'author': 'chromoly',
-    'version': (0, 1),
-    'blender': (2, 77, 0),
+    'version': (0, 1, 1),
+    'blender': (2, 78, 0),
     'location': '',
     'description': 'Replace default splash screen',
     'warning': 'need PyQt5',
@@ -44,10 +44,11 @@ from PyQt5 import QtGui, QtWidgets, QtCore, QtMultimedia
 import bpy
 
 try:
-    importlib.reload(utils)
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
 except NameError:
-    pass
-from .utils import AddonPreferences
+    from . import addongroup
+    from . import registerinfo
 
 
 EPS = 0.005
@@ -69,7 +70,8 @@ qt_queue = queue.Queue()
 
 
 class SplashScreenPreferences(
-        AddonPreferences,
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -113,6 +115,9 @@ class SplashScreenPreferences(
         row.prop(self, 'image_size')
         col.prop(self, 'expand_image')
         col.prop(self, 'auto_play')
+
+        layout.separator()
+        super().draw(context)
 
 
 class CustomQGraphicsView(QtWidgets.QGraphicsView):
@@ -746,8 +751,11 @@ classes = [
 show_splash = False
 
 
+@SplashScreenPreferences.module_register
 def register():
     global show_splash, first_run
+
+    SplashScreenPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.INFO_MT_help.append(menu_item)
@@ -760,6 +768,7 @@ def register():
     U.view.show_splash = False
 
 
+@SplashScreenPreferences.module_unregister
 def unregister():
     bpy.types.INFO_MT_help.remove(menu_item)
     for cls in classes[::-1]:

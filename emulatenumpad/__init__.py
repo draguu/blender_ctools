@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Emulate Numpad',
     'author': 'chromoly',
-    'version': (0, 1),
-    'blender': (2, 77, 0),
+    'version': (0, 1, 1),
+    'blender': (2, 78, 0),
     'location': 'Screen > MiddleMouse',
     # 英語で書けるかよw
     'description': 'マウス中ボタンと特定キーの組み合わせで、'
@@ -46,14 +46,14 @@ from mathutils import Vector
 
 try:
     importlib.reload(listvalidkeys)
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
     importlib.reload(structures)
-    importlib.reload(utils)
 except NameError:
     from .. import listvalidkeys
+    from . import addongroup
     from . import registerinfo
     from . import structures
-    from . import utils
 
 
 OPERATOR_PRIORITY = [
@@ -123,7 +123,7 @@ KeyPad = type('KeyPad', (), name_space)
 
 
 class EmulateNumpadPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         KeyPad,
         bpy.types.PropertyGroup if '.' in __name__ else
@@ -176,7 +176,8 @@ class EmulateNumpadPreferences(
         draw_column(sp.column(), ['kpmu', 'kp9', 'kp6', 'kp3', 'kpdl'])
         draw_column(sp.column(), [None, 'kpsu', 'kpad', None, 'kpen'])
 
-        super().draw(context, self.layout)
+        self.layout.separator()
+        super().draw(context)
 
 
 def find_event_keymap_items(context, event_attrs, keymaps, idnames=()):
@@ -413,6 +414,7 @@ classes = [
 
 @EmulateNumpadPreferences.module_register
 def register():
+    EmulateNumpadPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

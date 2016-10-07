@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Lock Coordinates',
     'author': 'chromoly',
-    'version': (0, 2, 3),
-    'blender': (2, 77, 0),
+    'version': (0, 2, 4),
+    'blender': (2, 78, 0),
     'location': 'View3D > ToolShelf > Lock Coordinates, '
                 'View3D > Header, '
                 'View3D > Ctrl + V > Lock, '
@@ -53,11 +53,11 @@ import bmesh
 from mathutils import Vector
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
-    importlib.reload(utils)
 except NameError:
+    from . import addongroup
     from . import registerinfo
-    from . import utils
 
 
 # BMLayerItem name
@@ -802,7 +802,7 @@ def draw_header(self, context):
 # AddonPreferences
 ###############################################################################
 class LockCoordsPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -825,6 +825,7 @@ classes = [
 
 @LockCoordsPreferences.module_register
 def register():
+    LockCoordsPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     setattr(PREFS_LOCATION[0],

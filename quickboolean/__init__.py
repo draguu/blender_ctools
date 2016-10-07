@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Quick Boolean',
     'author': 'chromoly',
-    'version': (1, 0),
-    'blender': (2, 77, 0),
+    'version': (1, 0, 1),
+    'blender': (2, 78, 0),
     'location': '',
     'description': '',
     'warning': '',
@@ -43,15 +43,15 @@ import mathutils.geometry
 from mathutils import *
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
     importlib.reload(unitsystem)
-    importlib.reload(utils)
     importlib.reload(vagl)
     importlib.reload(vaview3d)
 except NameError:
+    from . import addongroup
     from . import registerinfo
     from . import unitsystem
-    from . import utils
     from . import vagl
     from . import vaview3d
 
@@ -91,7 +91,7 @@ view_operators = [
 
 
 class QuickBooleanPreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
@@ -122,7 +122,8 @@ class QuickBooleanPreferences(
         split.column()
         split.column()
 
-        super().draw(context, layout)
+        layout.separator()
+        super().draw(context)
 
 
 def unwrap_uvs_edit(bm, faces):
@@ -1374,6 +1375,7 @@ classes = [
 
 @QuickBooleanPreferences.module_register
 def register():
+    QuickBooleanPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

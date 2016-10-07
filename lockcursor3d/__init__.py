@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Lock 3D Cursor',
     'author': 'chromoly',
-    'version': (0, 3),
-    'blender': (2, 77, 0),
+    'version': (0, 3, 1),
+    'blender': (2, 78, 0),
     'location': '3D View',
     'description': 'commit a791153: 3D Cursor: Add option to lock it in place '
                    'to prevent accidental modification',
@@ -46,8 +46,12 @@ import importlib
 import bpy
 
 try:
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
     importlib.reload(utils)
 except NameError:
+    from . import addongroup
+    from . import registerinfo
     from . import utils
 
 
@@ -63,6 +67,14 @@ space_prop = utils.SpaceProperty(
                      'accidentally moved')
      ]
 )
+
+
+class LockCursorPreferences(
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
+        bpy.types.PropertyGroup if '.' in __name__ else
+        bpy.types.AddonPreferences):
+    bl_idname = __name__
 
 
 class VIEW3D_OT_cursor3d_restrict(bpy.types.Operator):
@@ -144,11 +156,14 @@ def scene_update_pre(scene):
 
 
 classes = [
-    VIEW3D_OT_cursor3d_restrict
+    LockCursorPreferences,
+    VIEW3D_OT_cursor3d_restrict,
 ]
 
 
+@LockCursorPreferences.module_register
 def register():
+    LockCursorPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     """
@@ -162,6 +177,7 @@ def register():
     panel_draw_set()
 
 
+@LockCursorPreferences.module_unregister
 def unregister():
     panel_draw_restore()
 

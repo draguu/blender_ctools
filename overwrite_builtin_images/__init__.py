@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'Overwrite Builtin Images',
     'author': 'chromoly',
-    'version': (0, 2),
-    'blender': (2, 77, 0),
+    'version': (0, 2, 1),
+    'blender': (2, 78, 0),
     'location': 'UserPreference > Add-ons > Overwrite Builtin Images',
     'description': 'Overwrite splash and icon images',
     'warning': 'Linux only',
@@ -38,9 +38,11 @@ import bpy
 import bpy.props
 
 try:
-    importlib.reload(utils)
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
 except NameError:
-    from . import utils
+    from . import addongroup
+    from . import registerinfo
 
 
 def test_platform():
@@ -195,10 +197,12 @@ def update_icons32(self, context):
 
 
 class OverwriteSplashImagePreferences(
-        utils.AddonPreferences,
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
+
     splash = bpy.props.StringProperty(
         name='Splash Image',
         description='size: 501x282, max: {:,} bytes ({})'.format(
@@ -249,6 +253,9 @@ class OverwriteSplashImagePreferences(
         icon = 'ERROR' if self.icons32_alert else 'NONE'
         row.prop(self, 'icons32', icon=icon)
 
+        self.layout.separator()
+        super().draw(context)
+
 
 def restore_all():
     if not test_platform():
@@ -269,16 +276,26 @@ def restore_all():
     blend_cdll.ui_resources_init()
 
 
+classes = [
+    OverwriteSplashImagePreferences,
+]
+
+
+@OverwriteSplashImagePreferences.module_register
 def register():
-    bpy.utils.register_class(OverwriteSplashImagePreferences)
+    OverwriteSplashImagePreferences.register_pre()
+    for cls in classes:
+        bpy.utils.register_class(cls)
     update_image(bpy.context, 'splash', 1)
     update_image(bpy.context, 'splash', 2)
     update_image(bpy.context, 'icons', 1, False)
     update_image(bpy.context, 'icons', 2)
 
 
+@OverwriteSplashImagePreferences.module_unregister
 def unregister():
-    bpy.utils.unregister_class(OverwriteSplashImagePreferences)
+    for cls in classes[::-1]:
+        bpy.utils.register_class(cls)
     restore_all()
 
 

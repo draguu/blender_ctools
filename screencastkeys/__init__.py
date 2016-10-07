@@ -23,8 +23,8 @@ bl_info = {
     'name': 'Screencast Keys Mod',
     'author': 'Paulo Gomes, Bart Crouch, John E. Herrenyo, '
               'Gaia Clary, Pablo Vazquez, chromoly, Nutti',
-    'version': (2, 0, 1),
-    'blender': (2, 77, 0),
+    'version': (2, 0, 2),
+    'blender': (2, 78, 0),
     'location': '3D View > Properties Panel > Screencast Keys',
     'warning': '',
     'description': 'Display keys pressed in the 3D View, '
@@ -59,11 +59,13 @@ import blf
 import bpy.props
 
 try:
+    importlib.reload(addongroup)
     importlib.reload(registerinfo)
     importlib.reload(structures)
     importlib.reload(utils)
     importlib.reload(modalmanager)
 except NameError:
+    from . import addongroup
     from . import registerinfo
     from . import utils
 from .modalmanager import ModalHandlerManager
@@ -73,7 +75,7 @@ from .modalmanager import ModalHandlerManager
 # Addon Preferences
 ###############################################################################
 class ScreenCastKeysPreferences(
-    utils.AddonPreferences,
+    addongroup.AddonGroupPreferences,
     registerinfo.AddonRegisterInfo,
     bpy.types.PropertyGroup if '.' in __name__ else
     bpy.types.AddonPreferences):
@@ -162,7 +164,8 @@ class ScreenCastKeysPreferences(
         col.prop(self, 'offset')
         col.prop(self, 'show_last_operator')
 
-        super().draw(context, self.layout)
+        layout.separator()
+        super().draw(context)
 
 
 ###############################################################################
@@ -1050,6 +1053,7 @@ auto_save_manager = utils.AutoSaveManager()
 
 @ScreenCastKeysPreferences.module_register
 def register():
+    ScreenCastKeysPreferences.register_pre()
     for c in classes:
         bpy.utils.register_class(c)
     auto_save_manager.register()

@@ -59,7 +59,7 @@ classes = [
 
 
 def register():
-    OtherAddonPreferences.ensure_register()
+    OtherAddonPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 
