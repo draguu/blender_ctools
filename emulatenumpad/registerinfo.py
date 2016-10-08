@@ -975,6 +975,9 @@ class _AddonRegisterInfoKeyMap(_AddonRegisterInfo):
         cls.keymap_items.remove(item)
         if remove:
             km.keymap_items.remove(kmi)
+            # 強制的に更新
+            bpy.context.window_manager.keyconfigs.active = \
+                bpy.context.window_manager.keyconfigs.active
 
     @classmethod
     def keymap_items_remove(cls, remove=True,
@@ -1004,6 +1007,16 @@ class _AddonRegisterInfoKeyMap(_AddonRegisterInfo):
                         "not support modal keymap: '{}'".format(km.name))
                 km.keymap_items.remove(kmi)
         cls.keymap_items.clear()
+
+        # commit 103fbb3afc076383b94910e535374c5db398d06c
+        #     Fix memory leak caused by unknown opeartor of keymap item
+        #
+        # addonのKeyMapからKeyMapItemを消してもuserのKeyMapには
+        # まだ残ったままで、これの更新はメインループで行われる。
+        # この更新前にKeyMapItemに割り当てられたオペレーターをunregister
+        # してしまっているとKeyMapItem開放時にSegmentation faultで落ちる。
+        bpy.context.window_manager.keyconfigs.active = \
+            bpy.context.window_manager.keyconfigs.active
 
     @classmethod
     def keymap_items_set_default(cls):
