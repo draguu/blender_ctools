@@ -283,7 +283,6 @@ classes = [
 
 @OverwriteSplashImagePreferences.module_register
 def register():
-    OverwriteSplashImagePreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     update_image(bpy.context, 'splash', 1)

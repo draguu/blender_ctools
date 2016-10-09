@@ -73,7 +73,7 @@ class TabSwitcherPreferences(
         col.enabled = platform == 'linux'
         col.prop(self, 'use_c_functions')
 
-        layout.separator()
+        self.layout.separator()
         super().draw(context)
 
 
@@ -258,7 +258,6 @@ classes = [
 
 @TabSwitcherPreferences.module_register
 def register():
-    TabSwitcherPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

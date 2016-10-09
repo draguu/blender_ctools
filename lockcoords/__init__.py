@@ -825,7 +825,6 @@ classes = [
 
 @LockCoordsPreferences.module_register
 def register():
-    LockCoordsPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     setattr(PREFS_LOCATION[0],

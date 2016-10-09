@@ -21,62 +21,6 @@ import bpy
 _bpy = bpy  # addon_utils.py用
 
 
-class AddonPreferences:
-    @classmethod
-    def get_instance(cls):
-        """AddonPreferencesのインスタンスを返す。
-        :rtype: AddonPreferences
-        """
-        U = bpy.context.user_preferences
-        attrs = cls.bl_idname.split('.')
-        if attrs[0] not in U.addons:  # wm.read_factory_settings()
-            return None
-        prefs = U.addons[attrs[0]].preferences
-        for attr in attrs[1:]:
-            prefs = getattr(prefs, attr)
-        return prefs
-
-    @classmethod
-    def register(cls):
-        if '.' in cls.bl_idname:
-            # 親オブジェクトへの登録。
-            # ctools以外での使用を想定していない
-            U = bpy.context.user_preferences
-            attrs = cls.bl_idname.split('.')
-            base_prop = U.addons[attrs[0]].preferences
-            for attr in attrs[1:-1]:
-                base_prop = getattr(base_prop, attr)
-            prop = bpy.props.PointerProperty(type=cls)
-
-            if isinstance(base_prop, bpy.types.PropertyGroup):  # 汎用
-                setattr(base_prop.__class__, attrs[-1], prop)
-            else:  # ctools用
-                setattr(base_prop, attrs[-1], prop)
-
-        c = super()
-        if hasattr(c, 'register'):
-            c.register()
-
-    @classmethod
-    def unregister(cls):
-        if '.' in cls.bl_idname:
-            # 親オブジェクトからの登録解除。
-            # ctools以外での使用を想定していない
-            U = bpy.context.user_preferences
-            attrs = cls.bl_idname.split('.')
-            base_prop = U.addons[attrs[0]].preferences
-            for attr in attrs[1:-1]:
-                base_prop = getattr(base_prop, attr)
-            if isinstance(base_prop, bpy.types.PropertyGroup):  # 汎用
-                delattr(base_prop.__class__, attrs[-1])
-            else:  # ctools用
-                delattr(base_prop, attrs[-1])
-
-        c = super()
-        if hasattr(c, 'unregister'):
-            c.unregister()
-
-
 class SpaceProperty:
     """
     bpy.types.Spaceに仮想的なプロパティを追加

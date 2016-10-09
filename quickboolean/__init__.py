@@ -122,7 +122,7 @@ class QuickBooleanPreferences(
         split.column()
         split.column()
 
-        layout.separator()
+        self.layout.separator()
         super().draw(context)
 
 
@@ -1375,7 +1375,6 @@ classes = [
 
 @QuickBooleanPreferences.module_register
 def register():
-    QuickBooleanPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

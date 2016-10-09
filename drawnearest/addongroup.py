@@ -59,7 +59,7 @@ class MyAddonPreferences(
 
     bl_idname = __name__
 
-    # 対象のアドオンを指定。
+    # 対象のアドオンを指定。Noneなら自動で検索する。
     sub_modules = [
         'child_addon',
         'other_addon',
@@ -87,11 +87,10 @@ classes = [
     ...
 ]
 
+# AddonGroupPreferencesが依存するクラスがあるので、
+# デコレータを使ってそれを先に登録する。
+@ MyAddonPreferences.module_register
 def register():
-    # AddonGroupPreferencesが依存するクラスがあるので、
-    # それを先に登録する必要がある。
-    MyAddonPreferences.register_pre()
-
     for cls in classes:
         bpy.utils.register_class(cls)
 
@@ -185,7 +184,10 @@ class AddonGroupPreferences:
     # この二つの属性は継承したクラスで上書きする
     bl_idname = ''
     sub_modules = []
-    """:type: list[str]"""
+    """認識するサブモジュールの文字列のリスト。Noneを指定するとディレクトリ内に
+    あるファイルとディレクトリの全てが対象となる。
+    :type: list[str]
+    """
 
     _fake_sub_modules = OrderedDict()
 
@@ -210,6 +212,7 @@ class AddonGroupPreferences:
             try:
                 if fake_mod.__name__ in sys.modules:
                     mod = importlib.import_module(fake_mod.__name__)
+                    print('Reloading:', mod)
                     importlib.reload(mod)
             except:
                 traceback.print_exc()
@@ -235,9 +238,10 @@ class AddonGroupPreferences:
         return mod.__name__.replace('.', '__')
 
     @classmethod
-    def __fake_module(cls, mod_name, mod_path, speedy=True, force_support=None):
+    def __fake_module(cls, mod_name, mod_path, speedy=True, force_support=None,
+                      quiet=True):
         """scripts/modules/addon_utils.pyのmodule_refresh関数の中からコピペして
-        error_encodingを使わないように修正したもの。
+        error_encodingを使わないように修正し、quiet引数を追加したたもの。
         """
         if 0:
             global error_encoding
@@ -327,25 +331,49 @@ class AddonGroupPreferences:
 
             return mod
         else:
-            print("fake_module: addon missing 'bl_info' "
-                  "gives bad performance!: %r" % mod_path)
+            if not quiet:
+                print("fake_module: addon missing 'bl_info' "
+                      "gives bad performance!: %r" % mod_path)
             return None
 
     @classmethod
     def __gen_fake_sub_modules(cls):
         # cls._face_modulesの生成
         fake_modules = []
-        mod = sys.modules[cls.__module__]
-        curdir = os.path.dirname(mod.__file__)
-        files = os.listdir(curdir)
-        for name in cls.sub_modules:
-            if name in files:  # directory
-                p = os.path.join(curdir, name, '__init__.py')
-            else:  # .py
-                p = os.path.join(curdir, name + '.py')
-            mod = cls.__fake_module(cls.__module__ + '.' + name, p)
+        mod = sys.modules[cls.bl_idname]
+        if os.path.basename(mod.__file__) != '__init__.py':
+            # zipの場合はどうなるんだろ
+            return OrderedDict()
+        addon_dir = os.path.dirname(mod.__file__)
+
+        for mod_name, mod_path in bpy.path.module_names(addon_dir):
+            # このファイルと同一な物は飛ばし、指定外のモジュールも無視する。
+            if os.path.realpath(mod_path) == os.path.realpath(__file__):
+                continue
+            else:
+                # ハードリンクとシンボリックリンクの確認。Unix, Windows のみ
+                try:
+                    if os.path.samefile(mod_path, __file__):
+                        continue
+                except:
+                    pass
+            if cls.sub_modules is not None:
+                if mod_name not in cls.sub_modules:
+                    continue
+
+            mod = cls._fake_sub_modules.get(mod_name)
+            if mod:
+                if mod.__time__ != os.path.getmtime(mod_path):
+                    print("reloading addon:",
+                          mod.__name__,
+                          mod.__time__,
+                          os.path.getmtime(mod_path),
+                          mod_path,
+                          )
+            mod = cls.__fake_module(cls.bl_idname + '.' + mod_name, mod_path)
             if mod:
                 fake_modules.append(mod)
+
         fake_modules.sort(
             key=lambda mod: (mod.bl_info['category'], mod.bl_info['name']))
         return OrderedDict([(mod.__name__.split('.')[-1], mod)
@@ -418,13 +446,31 @@ class AddonGroupPreferences:
                     del prefs.misc_[attr]
 
     @classmethod
-    def register_pre(cls):
-        """このクラスはAddonGroupPreferencesMiscellaneousに依存するので
-        bpy.utils.register_class()の前に必ず実行しておく事。
+    def module_register(cls, func, **kwargs):
+        """register関数用のデコレータ。
+        このクラスはAddonGroupPreferencesMiscellaneousに依存するので
+        それを先に登録する為のもの。
+
+        @AddonGroupPreferences.module_register
+        def register():
+            ...
         """
-        misc_type = cls.__get_misc_type()
-        if not misc_type.is_registered:
-            bpy.utils.register_class(misc_type)
+
+        import functools
+
+        @functools.wraps(func)
+        def new_func():
+            misc_type = cls.__get_misc_type()
+            if not misc_type.is_registered:
+                bpy.utils.register_class(misc_type)
+            func()
+        new_func._register = func
+
+        c = super()
+        if hasattr(c, 'module_register'):
+            new_func = c.module_register(new_func, **kwargs)
+
+        return new_func
 
     @classmethod
     def register(cls):
@@ -453,12 +499,12 @@ class AddonGroupPreferences:
                     setattr(prefs, 'use_' + name, False)
                     traceback.print_exc()
 
+        misc_type = cls.__get_misc_type()
+        misc_type._users += 1
+
         c = super()
         if hasattr(c, 'register'):
             c.register()
-
-        misc_type = cls.__get_misc_type()
-        misc_type._users += 1
 
     @classmethod
     def unregister(cls):
@@ -493,14 +539,14 @@ class AddonGroupPreferences:
                 base_prop = getattr(base_prop, attr)
             delattr(base_prop, attrs[-1])
 
-        c = super()
-        if hasattr(c, 'unregister'):
-            c.unregister()
-
         misc_type = cls.__get_misc_type()
         misc_type._users -= 1
         if misc_type._users == 0:
             bpy.utils.unregister_class(misc_type)
+
+        c = super()
+        if hasattr(c, 'unregister'):
+            c.unregister()
 
     def __getattribute__(self, name):
         prefix, base = re.match('(use_|show_expanded_|)(.*)', name).groups()
@@ -554,14 +600,13 @@ class AddonGroupPreferences:
                     attrs.append(pre + name)
         return attrs
 
-    def draw(self, context, layout=None, draw_parent=True):
+    def draw(self, context, **kwargs):
         """
         :type context: bpy.types.Context
         :type layout: bpy.types.UILayout
         """
-        if not layout:
-            layout = self.layout
-            """:type: bpy.types.UILayout"""
+        layout = self.layout
+        """:type: bpy.types.UILayout"""
 
         bl_idname = self.__class__.bl_idname
 
@@ -683,7 +728,7 @@ class AddonGroupPreferences:
                                            icon='ERROR')
                         del prefs.layout
 
-        if '.' not in bl_idname and self.sub_modules:
+        if '.' not in bl_idname and self._fake_sub_modules:
             row = layout.row()
             # row.alignment = 'RIGHT'
             # sub = row.box().row()
@@ -692,13 +737,9 @@ class AddonGroupPreferences:
             sub.prop(self, 'align_box_draw_')
             sub.prop(self, 'use_indent_draw_')
 
-        if draw_parent:
-            c = super()
-            if hasattr(c, 'draw'):
-                layout_bak = self.layout
-                self.layout = layout
-                c.draw(context)
-                self.layout = layout_bak
+        c = super()
+        if hasattr(c, 'draw'):
+            c.draw(context, **kwargs)
 
 
 classes = [

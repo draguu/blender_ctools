@@ -430,6 +430,7 @@ class RegionRulerPreferences(
         self.draw_property('use_fill', col)
         self.draw_property('auto_save', col)
 
+        self.layout.separator()
         super().draw(context)
 
 
@@ -2822,7 +2823,6 @@ def event_mco_region_mod_get(self):
 def register():
     logger.debug('Register RegionRuler')
 
-    RegionRulerPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     space_prop.register()

@@ -266,8 +266,8 @@ classes = [
 ]
 
 
+@CToolsPreferences.module_register
 def register():
-    CToolsPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

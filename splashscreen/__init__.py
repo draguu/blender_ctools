@@ -116,7 +116,7 @@ class SplashScreenPreferences(
         col.prop(self, 'expand_image')
         col.prop(self, 'auto_play')
 
-        layout.separator()
+        self.layout.separator()
         super().draw(context)
 
 
@@ -755,7 +755,6 @@ show_splash = False
 def register():
     global show_splash, first_run
 
-    SplashScreenPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.INFO_MT_help.append(menu_item)

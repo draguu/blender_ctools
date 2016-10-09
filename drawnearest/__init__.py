@@ -2596,7 +2596,6 @@ classes = [
 
 @DrawNearestPreferences.module_register
 def register():
-    DrawNearestPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     space_prop.register()

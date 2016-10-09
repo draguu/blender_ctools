@@ -163,7 +163,6 @@ classes = [
 
 @LockCursorPreferences.module_register
 def register():
-    LockCursorPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     """
@@ -190,6 +189,9 @@ def unregister():
         # km.keymap_items.remove(kmi)
         kmi.idname = 'view3d.cursor3d'
     keymap_items.clear()
+    bpy.context.window_manager.keyconfigs.active = \
+        bpy.context.window_manager.keyconfigs.active
+
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

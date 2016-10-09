@@ -1769,8 +1769,7 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
         return t
 
     # draw ----------------------------------------------------------
-    def draw(self, context, layout=None, hierarchy=False, box=True,
-             draw_parent=True):
+    def draw(self, context, hierarchy=False, box=True, **kwargs):
         """キーマップアイテムの一覧を描画。
         :param context: bpy.types.Context
         :param layout: bpy.types.UILayout
@@ -1779,8 +1778,8 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
         :param box: 展開時にBoxで囲む
         :type box: bool
         """
-        if not layout:
-            layout = self.layout
+
+        layout = self.layout
         addon_prefs = self.get_instance()
 
         column = layout.column()
@@ -1834,13 +1833,9 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
         if show_panels and addon_prop.default_panel_settings:
             self._draw_addon_panels(context, layout, box)
 
-        if draw_parent:
-            c = super()
-            if hasattr(c, 'draw'):
-                layout_bak = self.layout
-                self.layout = layout
-                c.draw(context)
-                self.layout = layout_bak
+        c = super()
+        if hasattr(c, 'draw'):
+            c.draw(context, **kwargs)
 
     # register / unregister -----------------------------------------
     @classmethod
@@ -1915,7 +1910,7 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
 
     # wrap ----------------------------------------------------------
     @classmethod
-    def module_register(cls, func, instance=None):
+    def module_register(cls, func, instance=None, **kwargs):
         import functools
 
         def get_km_items():
@@ -1966,19 +1961,25 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
                     if hasattr(addon_prefs_class, 'draw'):
                         def draw(self, context):
                             draw._draw(self, context)
-                            instance.draw(context, layout=self.layout)
+                            instance.layout = self.layout
+                            instance.draw(context)
+                            del instance.layout
 
                         draw_orig = addon_prefs_class.draw
                     else:
                         def draw(self, context):
-                            instance.draw(context, layout=self.layout)
+                            instance.layout = self.layout
+                            instance.draw(context)
+                            del instance.layout
                     addon_prefs_class.draw = draw
                     # TODO: 衝突の危険あり
                     addon_prefs_class.register_info = instance
 
                 else:
                     def draw(self, context):
-                        instance.draw(context, layout=self.layout)
+                        instance.layout = self.layout
+                        instance.draw(context)
+                        del instance.layout
 
                     cls_ = instance.__class__
                     name = cls_.bl_idname.replace('.', '_').upper()
@@ -2013,17 +2014,21 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
 
         _register._register = func
 
+        c = super()
+        if hasattr(c, 'module_register'):
+            _register = c.module_register(_register, **kwargs)
+
         return _register
 
     @classmethod
-    def module_register_ex(cls, register_info=None):
+    def module_register_ex(cls, instance=None):
         import functools
         return functools.partial(cls.module_register,
-                                 register_info=register_info)
+                                 instance=instance)
 
     @classmethod
     def module_unregister(cls, func, unregister_classes=False,
-                          instance=None):
+                          instance=None, **kwargs):
         import functools
 
         @functools.wraps(func)
@@ -2067,6 +2072,11 @@ class AddonRegisterInfo(  # _AddonRegisterInfo,
             func()
 
         _unregister._unregister = func
+
+        c = super()
+        if hasattr(c, 'module_unregister'):
+            _unregister = c.module_unregister(_unregister, **kwargs)
+
         return _unregister
 
     @classmethod

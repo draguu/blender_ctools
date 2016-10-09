@@ -164,7 +164,7 @@ class ScreenCastKeysPreferences(
         col.prop(self, 'offset')
         col.prop(self, 'show_last_operator')
 
-        layout.separator()
+        self.layout.separator()
         super().draw(context)
 
 
@@ -1053,7 +1053,6 @@ auto_save_manager = utils.AutoSaveManager()
 
 @ScreenCastKeysPreferences.module_register
 def register():
-    ScreenCastKeysPreferences.register_pre()
     for c in classes:
         bpy.utils.register_class(c)
     auto_save_manager.register()

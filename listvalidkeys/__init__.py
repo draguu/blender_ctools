@@ -416,7 +416,6 @@ classes = [
 
 @ListValidKeysPreferences.module_register
 def register():
-    ListValidKeysPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

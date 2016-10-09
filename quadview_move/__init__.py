@@ -77,7 +77,7 @@ class QuadViewMovePreferences(
         column = split.column()
         column = split.column()
 
-        layout.separator()
+        self.layout.separator()
         super().draw(context)
 
 
@@ -328,7 +328,6 @@ classes = [
 
 @QuadViewMovePreferences.module_register
 def register():
-    QuadViewMovePreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

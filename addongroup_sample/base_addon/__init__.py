@@ -18,46 +18,45 @@
 
 
 bl_info = {
-    'name': 'Child Addon',
-    'version': (0, 1),
+    'name': 'Base Addon',
+    'author': 'Anonymous',
+    'version': (1, 0),
+    'blender': (2, 78, 0),
+    'location': 'View3D > Tool Shelf',
     'description': 'Addon group test',
+    'warning': '',
+    'wiki_url': '',
     'category': '3D View',
-}
-
+    }
 
 if 'bpy' in locals():
     import importlib
     importlib.reload(addongroup)
-    importlib.reload(bar)
-    ChildAddonPreferences.reload_sub_modules()
+    BaseAddonPreferences.reload_sub_modules()
 else:
     from . import addongroup
-    from . import bar
 
 import bpy
 
 
-class ChildAddonPreferences(
-        addongroup.AddonGroupPreferences,
-        bpy.types.AddonPreferences if '.' not in __name__ else
-        bpy.types.PropertyGroup):
+class BaseAddonPreferences(
+        addongroup.AddonGroupPreferences, bpy.types.AddonPreferences):
+
     bl_idname = __name__
 
     sub_modules = [
-        'grandchild_addon'
+        'my_addon',
+        'space_view3d_other_addon'
     ]
-
-    def draw(self, context):
-        super().draw(context)
 
 
 classes = [
-    ChildAddonPreferences,
+    BaseAddonPreferences,
 ]
 
 
+@BaseAddonPreferences.module_register
 def register():
-    ChildAddonPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

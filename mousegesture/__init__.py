@@ -801,7 +801,7 @@ class MouseGesturePreferences(
                           icon='ZOOMIN')
         op.function = 'group_add'
 
-        layout.separator()
+        self.layout.separator()
         super().draw(context)
 
 
@@ -1446,7 +1446,6 @@ def load_handler(dummy):
 
 @MouseGesturePreferences.module_register
 def register():
-    MouseGesturePreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

@@ -19,51 +19,20 @@
 
 bl_info = {
     'name': 'Other Addon',
-    'version': (0, 1),
+    'author': 'Anonymous',
+    'version': (1, 0),
+    'blender': (2, 78, 0),
+    'location': 'View3D > Tool Shelf',
     'description': 'Addon group test',
+    'warning': '',
+    'wiki_url': '',
     'category': '3D View',
-}
-
-
-if 'bpy' in locals():
-    import importlib
-    importlib.reload(addongroup)
-    OtherAddonPreferences.reload_sub_modules()
-else:
-    from . import addongroup
-
-import bpy
-
-
-class OtherAddonPreferences(
-        addongroup.AddonGroupPreferences,
-        bpy.types.AddonPreferences if '.' not in __name__ else
-        bpy.types.PropertyGroup):
-    bl_idname = __name__
-
-    sub_modules = []
-
-    prop = bpy.props.IntProperty(name='OtherAddon Prop')
-
-    def draw(self, context):
-        layout = self.layout
-        layout.prop(self, 'prop')
-
-        layout.separator()
-        super().draw(context)
-
-
-classes = [
-    OtherAddonPreferences,
-]
+    }
 
 
 def register():
-    OtherAddonPreferences.register_pre()
-    for cls in classes:
-        bpy.utils.register_class(cls)
+    pass
 
 
 def unregister():
-    for cls in classes[::-1]:
-        bpy.utils.unregister_class(cls)
+    pass

@@ -565,7 +565,6 @@ classes = [
 
 @UVGridPreferences.module_register
 def register():
-    UVGridPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.IMAGE_MT_image.append(menu_item)

@@ -100,7 +100,7 @@ class UpdateTagPreferences(
         sub.prop(self, 'sculpt_interval')
         sub.active = self.use_sculpt
 
-        layout.separator()
+        self.layout.separator()
         super().draw(context)
 
 
@@ -430,7 +430,6 @@ classes = [
 
 @UpdateTagPreferences.module_register
 def register():
-    UpdateTagPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 

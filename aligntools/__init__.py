@@ -111,6 +111,7 @@ class AlignToolsPreferences(
 
         layout.prop(self, 'use_pie_menu')
 
+        self.layout.separator()
         super().draw(context)
 
     def update_keymap_items(self, context=None):
@@ -417,7 +418,6 @@ classes.extend(op_shift.classes)
 
 @AlignToolsPreferences.module_register
 def register():
-    AlignToolsPreferences.register_pre()
     for cls in classes:
         bpy.utils.register_class(cls)
 
