@@ -1,6 +1,6 @@
 # アドオンの階層化
 
-モジュール`addongroup.py`を用いて階層化する。
+モジュール`addongroup.py`を用いて、アドオン内にある別のアドオンを認識させる。
 
 ![Image](../images/addongroup.jpg)
 
@@ -85,24 +85,25 @@ AddonPreferencesインスタンスの取得方法
 
 ```
 # 子のアドオンではこの方法は不可となる。
-prefs = bpy.context.user_preferences.addons[MyAddonPreferences.bl_idname].preferences
+addon_prefs = bpy.context.user_preferences.addons[MyAddonPreferences.bl_idname].preferences
 
-# 代わりにクラスメソッドで取得する。
-prefs = MyAddonPreferences.get_instance()
+# 代わりにクラスメソッドのget_instanceで取得する。
+# 子の場合、このインスタンスの型はAddonPreferencesではなくPropertyGroupとなる点には注意。
+addon_prefs = MyAddonPreferences.get_instance()
 ```
 
 他
 
 ```
+addon_prefs = MyAddonPreferences.get_instance()
+
 # UserPreferences画面で詳細が表示されているかはshow_expanded_+モジュール名の属性。
-show_other_addon_detail = prefs.show_expanded_other_addon
+show_child_addon_detail = addon_prefs.show_expanded_child_addon
 
 # アドオンが有効か否かは use_ + モジュール名。
-if prefs.use_my_addon:
-    # 子のアドオン設定はモジュール名の属性で取得できる。
-    my_addon_prefs = prefs.my_addon
-if prefs.use_space_view3d_other_addon:
-    space_view3d_other_addon_prefs = prefs.space_view3d_other_addon
+if addon_prefs.use_child_addon:
+    # 子のアドオン設定はモジュール名の属性からでも取得できる。
+    child_addon_prefs = addon_prefs.child_addon
 ```
 
 ## 親となるアドオンの作成
