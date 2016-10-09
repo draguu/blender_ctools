@@ -85,7 +85,7 @@ AddonPreferencesインスタンスの取得方法
 
 ```
 # 子のアドオンではこの方法は不可となる。
-prefs = bpy.context.user_preferences.addons[__name__].preferences
+prefs = bpy.context.user_preferences.addons[MyAddonPreferences.bl_idname].preferences
 
 # 代わりにクラスメソッドで取得する。
 prefs = MyAddonPreferences.get_instance()
