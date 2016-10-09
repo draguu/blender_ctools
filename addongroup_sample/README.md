@@ -1,6 +1,8 @@
 # アドオンの階層化
 
-addongroup.pyを用いて階層化する。
+モジュール`addongroup.py`を用いて階層化する。
+
+![Image](../images/addongroup.jpg)
 
 ```
 例:

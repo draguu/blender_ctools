@@ -18,40 +18,48 @@
 
 
 """
-アドオンの階層構造を作る為のモジュール。
+# アドオンの階層化
 
-使い方。
-この様なファイル構造を例とする。
-2.78/scripts/addons/my_addon/ --- __init__.py
-                               |- addongroup.py
-                               |- foo.py
-                               |
-                               |- child_addon/ --- __init__.py
-                               |                |- addongroup.py
-                               |                `- bar.py
-                               |
-                               `- other_addon/ --- __init__.py
-                                                `- addongroup.py
+addongroup.pyを用いて階層化する。
 
-### my_addon/__init__.py ###
+```
+例:
+2.78/scripts/addons/base_addon/ --- __init__.py
+                                 |- addongroup.py
+                                 |
+                                 |- my_addon/ --- __init__.py
+                                 |             |- addongroup.py
+                                 |             |
+                                 |             `- child_addon/ --- __init__.py
+                                 |                              `- addongroup.py
+                                 |
+                                 `- space_view3d_other_addon.py
+```
 
-bl_info = {
-    'name': 'My Addon',
-    'version': (0, 1),
-    'category': 'User Interface',
-}
+## アドオンの修正
 
+※ AddonPreferencesを持たず、かつ子を追加する予定の無いアドオンなら修正の必要は無い。
+
+単体ファイルからなるアドオンならパッケージに変更し、中に`addongroup.py`をコピーしておく。
+
+import部分
+
+```
 if 'bpy' in locals():  # F8キーでモジュールが再読み込みされる場合。
     import importlib
     importlib.reload(addongroup)
-    importlib.reload(foo)
-    MyAddonPreferences.reload_sub_modules()  # 子のアドオンを再読み込み。
+    MyAddonPreferences.reload_sub_modules()  # 子のアドオンを再読み込みする。
 else:
     from . import addongroup
-    from . import foo
 
 import bpy
+```
 
+AddonPreferencesの修正
+
+```
+# 子となるアドオンは bpy.types.AddonPreferences ではなく
+# bpy.types.PropertyGroup を継承する必要がある
 class MyAddonPreferences(
         addongroup.AddonGroupPreferences,
         bpy.types.AddonPreferences if '.' not in __name__ else
@@ -59,90 +67,113 @@ class MyAddonPreferences(
 
     bl_idname = __name__
 
-    # 対象のアドオンを指定。Noneなら自動で検索する。
-    sub_modules = [
-        'child_addon',
-        'other_addon',
-    ]
+    # 子となるアドオンを文字列のリストで指定する。デフォルトは空のリスト。
+    # Noneなら現在のアドオンのディレクトリの中からアドオンを自動で検索する。
+    sub_modules = None
 
+    # 元からdrawメソッドが存在するならAddonGroupPreferencesのdraw関数も呼んでおく
     def draw(self, context):
-        ...
-        # AddonGroupPreferencesのdrawメソッドで子のアドオンの設定を表示する。
+        # (略)
         super().draw(context)
 
+    # 元からregisterメソッドが存在するならAddonGroupPreferencesの(ry
     @classmethod
     def register(cls):
-        ...
-        # registerやunregisterクラスメソッドを定義するなら
-        # addongrouppreferencesのメソッドも呼んでおくこと。
+        # (略)
         super().register()
 
+    # 元からunregisterメソッドが(ry
     @classmethod
     def unregister(cls):
-        ...
+        # (略)
         super().unregister()
+```
 
-classes = [
-    MyAddonPreferences,
-    ...
-]
+register関数の修正
 
-# AddonGroupPreferencesが依存するクラスがあるので、
-# デコレータを使ってそれを先に登録する。
-@ MyAddonPreferences.module_register
+`module_register`クラスメソッドで`register`関数をデコレートする
+
+```
+@MyAddonPreferences.module_register
 def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
+    # (略)
+```
 
-    # prefs = bpy.context.user_preferences.addons[__name__].preferences
-    # 普通はこのやり方でアドオンの設定を参照出来るけど、入れ子にした場合は
-    # この方法は使えないので代わりにget_instanceクラスメソッドを使う。
-    # これはアドオンを入れ子にしていない場合でも使える。
-    prefs = MyAddonPreferences.get_instance()
+AddonPreferencesインスタンスの取得方法
 
-    # UserPreferences画面で詳細が表示されているかはshow_expanded_+モジュール名の属性。
-    show_other_addon_detail = prefs.show_expanded_other_addon
+```
+# 子のアドオンではこの方法は不可となる。
+prefs = bpy.context.user_preferences.addons[__name__].preferences
 
-    # アドオンが有効か否かは use_ + モジュール名。
-    if prefs.use_child_addon:
-        # 子のアドオンの設定はモジュール名。
-        child_addon_prefs = prefs.child_addon
-    if prefs.use_other_addon:
-        other_addon_prefs = prefs.other_addon
+# 代わりにクラスメソッドで取得する。
+prefs = MyAddonPreferences.get_instance()
+```
 
-def unregister():
-    for cls in classes[::-1]:
-        bpy.utils.unregister_class(cls)
+他
 
+```
+# UserPreferences画面で詳細が表示されているかはshow_expanded_+モジュール名の属性。
+show_other_addon_detail = prefs.show_expanded_other_addon
 
-### my_addon/child_addon/__init__.py ###
-### my_addon/other_addon/__init__.py ###
+# アドオンが有効か否かは use_ + モジュール名。
+if prefs.use_my_addon:
+    # 子のアドオン設定はモジュール名の属性で取得できる。
+    my_addon_prefs = prefs.my_addon
+if prefs.use_space_view3d_other_addon:
+    space_view3d_other_addon_prefs = prefs.space_view3d_other_addon
+```
 
-# my_addon/__init__.py と基本的な書き方は一緒。
+## 親となるアドオンの作成
+
+既存のアドオンに子を追加してもいいけど、今回は無機能のアドオンを作ってそれに子を追加する。
+
+```
+# base_addon/__init__.py
+
+bl_info = {
+    'name': 'Base Addon',
+    'author': 'Anonymous',
+    'version': (1, 0),
+    'blender': (2, 78, 0),
+    'location': 'View3D > Tool Shelf',
+    'description': 'Addon group test',
+    'warning': '',
+    'wiki_url': '',
+    'category': '3D View',
+    }
 
 if 'bpy' in locals():
     import importlib
     importlib.reload(addongroup)
-    importlib.reload(bar)
-    # MyAddonChildPreferences.reload_sub_modules()  # 子は無いので不要。
+    BaseAddonPreferences.reload_sub_modules()
 else:
     from . import addongroup
-    from . import bar
 
 import bpy
 
-# もし、元々アドオンにAddonPreferencesが定義されてなくて、子のアドオンも
-# 無いのなら、新たに定義する必要は無い。
-class MyAddonChildPreferences(
-        addongroup.AddonGroupPreferences,
-        bpy.types.AddonPreferences if '.' not in __name__ else
-        bpy.types.PropertyGroup):
+class BaseAddonPreferences(
+        addongroup.AddonGroupPreferences, bpy.types.AddonPreferences):
 
     bl_idname = __name__
 
-    sub_modules = []
+    sub_modules = [
+        'my_addon',
+        'space_view3d_other_addon'
+    ]
 
-(以下略)
+classes = [
+    BaseAddonPreferences,
+]
+
+@BaseAddonPreferences.module_register
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
+
+def unregister():
+    for cls in classes[::-1]:
+        bpy.utils.unregister_class(cls)
+```
 
 """
 
