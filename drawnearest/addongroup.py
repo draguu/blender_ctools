@@ -242,14 +242,24 @@ class AddonGroupPreferences:
 
     @classmethod
     def reload_sub_modules(cls):
-        for fake_mod in cls.__gen_fake_sub_modules().values():
+        if cls.is_registered:
+            cls.__unregister_sub_modules()
+            cls.__delete_attributes()
+
+        cls.__delete_fake_sub_modules()
+        cls.__init_fake_sub_modules()
+        for fake_mod in cls._fake_sub_modules.values():
             try:
                 if fake_mod.__name__ in sys.modules:
                     mod = importlib.import_module(fake_mod.__name__)
-                    print('Reloading:', mod)
+                    # print('Reloading:', mod)
                     importlib.reload(mod)
             except:
                 traceback.print_exc()
+
+        if cls.is_registered:
+            cls.__init_attributes()
+            cls.__register_sub_modules()
 
     @classmethod
     def get_instance(cls):
@@ -418,6 +428,10 @@ class AddonGroupPreferences:
         cls._fake_sub_modules = cls.__gen_fake_sub_modules()
 
     @classmethod
+    def __delete_fake_sub_modules(cls):
+        cls._fake_sub_modules.clear()
+
+    @classmethod
     def __init_attributes(cls):
         prefs = cls.get_instance()
         misc_type = cls.__get_misc_type()
@@ -457,12 +471,35 @@ class AddonGroupPreferences:
             setattr(prefs, 'show_expanded_' + name, prop)
 
     @classmethod
+    def __delete_attributes(cls):
+        prefs = cls.get_instance()
+        misc_type = cls.__get_misc_type()
+        for name, fake_mod in cls._fake_sub_modules.items():
+            delattr(prefs, 'use_' + name)
+            delattr(prefs, 'show_expanded_' + name)
+            attr = cls.__mod_to_attr(fake_mod)
+            if hasattr(misc_type, '_show_expanded_' + attr):
+                delattr(misc_type, '_show_expanded_' + attr)
+
+    @classmethod
     def __register_sub_module(cls, mod):
         if not hasattr(mod, '__addon_enabled__'):
             mod.__addon_enabled__ = False
         if not mod.__addon_enabled__:
             mod.register()
             mod.__addon_enabled__ = True
+
+    @classmethod
+    def __register_sub_modules(cls):
+        prefs = cls.get_instance()
+        for name, fake_mod in cls._fake_sub_modules.items():
+            if getattr(prefs, 'use_' + name):
+                try:
+                    mod = importlib.import_module(fake_mod.__name__)
+                    cls.__register_sub_module(mod)
+                except:
+                    setattr(prefs, 'use_' + name, False)
+                    traceback.print_exc()
 
     @classmethod
     def __unregister_sub_module(cls, mod, clear_preferences=False):
@@ -478,6 +515,69 @@ class AddonGroupPreferences:
                 attr = prefix + cls.__mod_to_attr(mod)
                 if attr in prefs.misc_:
                     del prefs.misc_[attr]
+
+    @classmethod
+    def __unregister_sub_modules(cls):
+        prefs = cls.get_instance()
+        for name, fake_mod in cls._fake_sub_modules.items():
+            if getattr(prefs, 'use_' + name):
+                try:
+                    mod = importlib.import_module(fake_mod.__name__)
+                    cls.__unregister_sub_module(mod)
+                except:
+                    traceback.print_exc()
+
+    @classmethod
+    def register(cls):
+        # 親オブジェクトへの登録。__init_attributes()でget_instance()を
+        # 使うので先に処理しておく
+        if '.' in cls.bl_idname:
+            U = bpy.context.user_preferences
+            attrs = cls.bl_idname.split('.')
+            base_prop = U.addons[attrs[0]].preferences
+            for attr in attrs[1:-1]:
+                base_prop = getattr(base_prop, attr)
+            prop = bpy.props.PointerProperty(type=cls)
+            setattr(base_prop, attrs[-1], prop)
+
+        cls.__init_fake_sub_modules()
+        cls.__init_attributes()
+        cls.__register_sub_modules()
+
+        misc_type = cls.__get_misc_type()
+        misc_type._users += 1
+
+        c = super()
+        if hasattr(c, 'register'):
+            c.register()
+
+    @classmethod
+    def unregister(cls):
+        # unregister sub modules
+        U = bpy.context.user_preferences
+        if __name__ in U.addons:  # wm.read_factory_settings()の際に偽となる
+            return
+
+        cls.__unregister_sub_modules()
+        cls.__delete_attributes()
+        cls.__delete_fake_sub_modules()
+
+        if '.' in cls.bl_idname:
+            # 親オブジェクトからの登録解除。
+            attrs = cls.bl_idname.split('.')
+            base_prop = U.addons[attrs[0]].preferences
+            for attr in attrs[1:-1]:
+                base_prop = getattr(base_prop, attr)
+            delattr(base_prop, attrs[-1])
+
+        misc_type = cls.__get_misc_type()
+        misc_type._users -= 1
+        if misc_type._users == 0:
+            bpy.utils.unregister_class(misc_type)
+
+        c = super()
+        if hasattr(c, 'unregister'):
+            c.unregister()
 
     @classmethod
     def module_register(cls, func, **kwargs):
@@ -505,82 +605,6 @@ class AddonGroupPreferences:
             new_func = c.module_register(new_func, **kwargs)
 
         return new_func
-
-    @classmethod
-    def register(cls):
-        # 親オブジェクトへの登録。_init_attributes()でget_instance()を
-        # 使うので先に処理しておく
-        if '.' in cls.bl_idname:
-            U = bpy.context.user_preferences
-            attrs = cls.bl_idname.split('.')
-            base_prop = U.addons[attrs[0]].preferences
-            for attr in attrs[1:-1]:
-                base_prop = getattr(base_prop, attr)
-            prop = bpy.props.PointerProperty(type=cls)
-            setattr(base_prop, attrs[-1], prop)
-
-        cls.__init_fake_sub_modules()
-        cls.__init_attributes()
-
-        # register sub modules
-        prefs = cls.get_instance()
-        for name, fake_mod in cls._fake_sub_modules.items():
-            if getattr(prefs, 'use_' + name):
-                try:
-                    mod = importlib.import_module(fake_mod.__name__)
-                    cls.__register_sub_module(mod)
-                except:
-                    setattr(prefs, 'use_' + name, False)
-                    traceback.print_exc()
-
-        misc_type = cls.__get_misc_type()
-        misc_type._users += 1
-
-        c = super()
-        if hasattr(c, 'register'):
-            c.register()
-
-    @classmethod
-    def unregister(cls):
-        # unregister sub modules
-        U = bpy.context.user_preferences
-        if __name__ in U.addons:  # wm.read_factory_settings()の際に偽となる
-            return
-
-        prefs = cls.get_instance()
-        misc_type = cls.__get_misc_type()
-        for name, fake_mod in cls._fake_sub_modules.items():
-            if getattr(prefs, 'use_' + name):
-                try:
-                    mod = importlib.import_module(fake_mod.__name__)
-                    cls.__unregister_sub_module(mod)
-                except:
-                    traceback.print_exc()
-            delattr(prefs, 'use_' + name)
-            delattr(prefs, 'show_expanded_' + name)
-            attr = cls.__mod_to_attr(fake_mod)
-            if hasattr(misc_type, '_show_expanded_' + attr):
-                delattr(misc_type, '_show_expanded_' + attr)
-
-        cls._fake_sub_modules.clear()
-
-        if '.' in cls.bl_idname:
-            # 親オブジェクトからの登録解除。
-            # ctools以外での使用を想定していない
-            attrs = cls.bl_idname.split('.')
-            base_prop = U.addons[attrs[0]].preferences
-            for attr in attrs[1:-1]:
-                base_prop = getattr(base_prop, attr)
-            delattr(base_prop, attrs[-1])
-
-        misc_type = cls.__get_misc_type()
-        misc_type._users -= 1
-        if misc_type._users == 0:
-            bpy.utils.unregister_class(misc_type)
-
-        c = super()
-        if hasattr(c, 'unregister'):
-            c.unregister()
 
     def __getattribute__(self, name):
         prefix, base = re.match('(use_|show_expanded_|)(.*)', name).groups()
