@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Lock 3D Cursor',
     'author': 'chromoly',
-    'version': (0, 3, 1),
+    'version': (0, 3, 2),
     'blender': (2, 78, 0),
     'location': '3D View',
     'description': 'commit a791153: 3D Cursor: Add option to lock it in place '
@@ -55,9 +55,6 @@ except NameError:
     from . import utils
 
 
-TARGET_KEYCONFIG = 'Blender'  # or 'Blender User'
-
-
 space_prop = utils.SpaceProperty(
     [bpy.types.SpaceView3D,
      'lock_cursor_location',
@@ -77,9 +74,30 @@ class LockCursorPreferences(
     bl_idname = __name__
 
 
+class VIEW3D_OT_cursor3d_override(bpy.types.Operator):
+    bl_idname = 'view3d.cursor3d_override'
+    bl_label = 'Override 3D Cursor Operator'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return bpy.ops.view3d.cursor3d.poll()
+
+    def invoke(self, context, event):
+        kc = bpy.context.window_manager.keyconfigs.active
+        km = kc.keymaps.get('3D View')
+        if km:
+            for kmi in km.keymap_items:
+                if kmi.idname == 'view3d.cursor3d':
+                    kmi.idname = 'view3d.cursor3d_restrict'
+                    disabled_keymap_items.append((kc.name, km.name, kmi.id))
+
+        return {'PASS_THROUGH'}
+
+
 class VIEW3D_OT_cursor3d_restrict(bpy.types.Operator):
     bl_idname = 'view3d.cursor3d_restrict'
-    bl_label = 'Cursor 3D'
+    bl_label = 'Set 3D Cursor'
     bl_options = set()
 
     @classmethod
@@ -138,25 +156,12 @@ def panel_draw_restore():
         cls.draw = draw_func_bak
 
 
-keymap_items = []
-
-
-@bpy.app.handlers.persistent
-def scene_update_pre(scene):
-    """起動後に一度だけ実行"""
-    kc = bpy.context.window_manager.keyconfigs[TARGET_KEYCONFIG]
-    if kc:
-        km = kc.keymaps.get('3D View')
-        if km:
-            for kmi in km.keymap_items:
-                if kmi.idname == 'view3d.cursor3d':
-                    kmi.idname = 'view3d.cursor3d_restrict'
-                    keymap_items.append((km, kmi))
-    bpy.app.handlers.scene_update_pre.remove(scene_update_pre)
+disabled_keymap_items = []
 
 
 classes = [
     LockCursorPreferences,
+    VIEW3D_OT_cursor3d_override,
     VIEW3D_OT_cursor3d_restrict,
 ]
 
@@ -171,27 +176,37 @@ def register():
     """
     space_prop.register()
 
-    bpy.app.handlers.scene_update_pre.append(scene_update_pre)
-
     panel_draw_set()
+
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
+    if kc:
+        km = LockCursorPreferences.get_keymap('3D View')
+        kmi = km.keymap_items.new(
+            'view3d.cursor3d_override', 'ACTIONMOUSE', 'PRESS',
+            head=True
+        )
 
 
 @LockCursorPreferences.module_unregister
 def unregister():
     panel_draw_restore()
 
-    if scene_update_pre in bpy.app.handlers.scene_update_pre:
-        bpy.app.handlers.scene_update_pre.remove(scene_update_pre)
-
     space_prop.unregister()
 
-    for km, kmi in keymap_items:
-        # km.keymap_items.remove(kmi)
-        kmi.idname = 'view3d.cursor3d'
-    keymap_items.clear()
-    bpy.context.window_manager.keyconfigs.active = \
-        bpy.context.window_manager.keyconfigs.active
-
+    wm = bpy.context.window_manager
+    for kc_name, km_name, kmi_id in disabled_keymap_items:
+        kc = wm.keyconfigs.get(kc_name)
+        if not kc:
+            continue
+        km = kc.keymaps.get(km_name)
+        if not km:
+            continue
+        for kmi in km.keymap_items:
+            if kmi.id == kmi_id:
+                kmi.idname = 'view3d.cursor3d'
+                break
+    disabled_keymap_items.clear()
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
