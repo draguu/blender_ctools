@@ -17,14 +17,43 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+"""
+structure:
+set(type, attr, prop)
+
+PointerPropertyとCollectionPropertyのtypeには辞書を指定して自動で
+型の生成と登録を行う
+"""
+
+"""
+NOTE: RNA_def_struct_idprops_func()でidproperに値を指定しているものがIDPropertyを持つ
+% grep -rn RNA_def_struct_idprops_func
+blender/makesrna/intern/rna_sequencer.c:1420:	RNA_def_struct_idprops_func(srna, "rna_Sequence_idprops");
+blender/makesrna/intern/rna_constraint.c:899:	RNA_def_struct_idprops_func(srna, "rna_PythonConstraint_idprops");
+blender/makesrna/intern/rna_nodetree.c:6889:	RNA_def_struct_idprops_func(srna, "rna_NodeSocket_idprops");
+blender/makesrna/intern/rna_nodetree.c:7013:	RNA_def_struct_idprops_func(srna, "rna_NodeSocketInterface_idprops");
+blender/makesrna/intern/rna_nodetree.c:7653:	RNA_def_struct_idprops_func(srna, "rna_Node_idprops");
+blender/makesrna/intern/rna_define.c:936:void RNA_def_struct_idprops_func(StructRNA *srna, const char *idproperties)
+blender/makesrna/intern/rna_ui.c:1041:	RNA_def_struct_idprops_func(srna, "rna_UIList_idprops");
+blender/makesrna/intern/rna_pose.c:795:	RNA_def_struct_idprops_func(srna, "rna_PoseBone_idprops");
+blender/makesrna/intern/rna_userdef.c:3262:	RNA_def_struct_idprops_func(srna, "rna_AddonPref_idprops");
+blender/makesrna/intern/rna_ID.c:796:	RNA_def_struct_idprops_func(srna, "rna_PropertyGroup_idprops");
+blender/makesrna/intern/rna_ID.c:933:	RNA_def_struct_idprops_func(srna, "rna_ID_idprops");
+blender/makesrna/intern/rna_armature.c:715:	RNA_def_struct_idprops_func(srna, "rna_Bone_idprops");
+blender/makesrna/intern/rna_armature.c:811:	RNA_def_struct_idprops_func(srna, "rna_EditBone_idprops");
+blender/makesrna/intern/rna_wm.c:1556:	RNA_def_struct_idprops_func(srna, "rna_OperatorProperties_idprops");
+blender/makesrna/RNA_define.h:62:void RNA_def_struct_idprops_func(StructRNA *srna, const char *refine);
+"""
+
+
 import bpy
 
 
-class CollectionPropertyOperators(bpy.types.PropertyGroup):
+class _CPOperators:
     """CollectionPropertyに対する複数のオペレータを纏めて登録する。
 
     最初にregister_classでこのクラスを登録しておく。
-    >>> bpy.utils.register_class(CollectionPropertyOperators)
+    >>> bpy.utils.register_class(CPOperators)
 
     bpy.ops.wm.collection_add(data_path='', function='')
     bpy.ops.wm.collection_remove(data_path='', function='', index=0)
@@ -78,7 +107,11 @@ class CollectionPropertyOperators(bpy.types.PropertyGroup):
         bl_label = 'Collection Add'
 
         def execute(self, context):
-            self._functions[self.function](context)
+            if self.data_path:
+                collection = eval('bpy.context.' + self.data_path)
+                collection.add()
+            if self.function:
+                self._functions[self.function](context)
             return {'FINISHED'}
 
     class Remove(_OperatorCollection, bpy.types.Operator):
@@ -99,7 +132,7 @@ class CollectionPropertyOperators(bpy.types.PropertyGroup):
             if self.data_path:
                 collection = eval('bpy.context.' + self.data_path)
                 collection.remove(self.index)
-            else:
+            if self.function:
                 self._functions[self.function](context, self.index)
             return {'FINISHED'}
 
@@ -111,7 +144,7 @@ class CollectionPropertyOperators(bpy.types.PropertyGroup):
             if self.data_path:
                 collection = eval('bpy.context.' + self.data_path)
                 collection.clear()
-            else:
+            if self.function:
                 self._functions[self.function](context)
             return {'FINISHED'}
 
@@ -126,7 +159,7 @@ class CollectionPropertyOperators(bpy.types.PropertyGroup):
             if self.data_path:
                 collection = eval('bpy.context.' + self.data_path)
                 collection.move(self.index_from, self.index_to)
-            else:
+            if self.function:
                 self._functions[self.function](context, self.index_from,
                                                self.index_to)
             return {'FINISHED'}
@@ -139,8 +172,27 @@ class CollectionPropertyOperators(bpy.types.PropertyGroup):
     ]
 
     @classmethod
+    def _to_bl_idname(cls, name):
+        """windowmanager/intern/wm_operators.c
+        WM_operator_py_idname: SOME_OT_op -> some.op
+        WM_operator_bl_idname: some.op -> SOME_OT_op
+        :type name: str
+        :rtype: str
+        """
+        mod, func = name.split('.')
+        return mod.upper() + '_OT_' + func
+
+    @classmethod
+    def _increment(cls, name):
+        import re
+        m = re.match('(.*?)(\d*)$', name)
+        return m.group(1) + str((int(m.group(2)) + 1) if m.group(2) else 1)
+
+    @classmethod
     def register(cls):
         for c in cls.classes:
+            while hasattr(bpy.types, cls._to_bl_idname(c.bl_idname)):
+                c.bl_idname = cls._increment(c.bl_idname)
             bpy.utils.register_class(c)
 
     @classmethod
@@ -148,127 +200,231 @@ class CollectionPropertyOperators(bpy.types.PropertyGroup):
         for c in cls.classes:
             bpy.utils.unregister_class(c)
 
+    @classmethod
+    def new_class(cls):
+        """:rtype: CPOperators"""
+        return type('CPOperators', (_CPOperators, bpy.types.PropertyGroup), {})
 
-class PyCustomProperty(bpy.types.PropertyGroup):
-    """あらかじめ型やインスタンスに対応するプロパティを設定しておいて、
-    draw関数の中での動的なプロパティ追加を可能にする。
-    詳しくはtest()関数を参照。
 
-    # PointerProperty
-    bpy.types.WindowManager.custom_props = bpy.props.PointerProperty(
-        type=PyCustomProperty)
+class CPOperators(_CPOperators, bpy.types.PropertyGroup):
+    pass
 
-    # 例
-    class Hoge:
-        a = 1
-    hoge = Hoge()
-    class AddonPrefs(bpy.types.AddonPreferences):
-        def draw(self, context):
-            layout = self.layout
-            PyCustomProperty.set(Hoge, 'a', bpy.props.IntProperty())
-            attrs = PyCustomProperty.ensure(hoge)
-            layout.prop(PyCustomProperty.active(), attrs['a'])
-    """
 
-    # # Logger
-    # import logging
-    # logger = logging.getLogger(__name__).getChild(__qualname__)
-    # """:type: logging.Logger"""
-    # logger.propagate = False
-    # logger.setLevel(logging.DEBUG)
-    # for handler in list(logger.handlers):
-    #     logger.removeHandler(handler)
-    # handler = logging.StreamHandler()
-    # handler.setLevel(logging.NOTSET)
-    # formatter = logging.Formatter(
-    #     '[%(levelname)s] '
-    #     '[%(name)s.%(funcName)s():%(lineno)d]: '
-    #     '%(message)s')
-    # handler.setFormatter(formatter)
-    # logger.addHandler(handler)
-    # del handler, formatter
-    #
-    # @property
-    # def logger_level(self):
-    #     return self.logger.level
-    #
-    # @logger_level.setter
-    # def logger_level(self, level):
-    #     self.logger.setLevel(level)
+class _CustomProperty:
+    class _Data:
+        def __init__(self):
+            self.wm_attribute = 'custom_property'
 
-    # pointer_property = getattr(bpy.context.window_manager, cls._props_attr)
-    _props_attr = 'custom_props'
+            # {id(obj)/obj.as_pointer(): {attr: [prop, users], ...}, ...}
+            self.custom_properties = {}
+            self.dynamic_properties = {}  # property()用
+            # {id(obj)/obj.as_pointer(): obj, ...}
+            self.key_object = {}  # property()用
 
-    # 同名のクラスで共有する値。registerの際に初期化
-    _common_data = None
-    """:type: dict"""
+            # {wm_attr: [obj, attr, ob, prop], ...}
+            # 現在、値はpropしか利用していない
+            self.attribute_property = {}
 
-    # setattrに値を代入する事でfset関数を呼び出して
-    # PyCustomPropertiesに属性を追加する。
-    # get, set, update 関数の中では属性追加に制限がかからないから
-    # わざわざこんな面倒な事をする。
-    def fget(self):
+            self.temporary_data = None
+
+            self.save_handlers = []
+            self.load_handlers = []
+
+        def key_props(self, obj, dynamic, create=True):
+            """obj用のキーとその辞書を返す"""
+            if dynamic:
+                properties = self.dynamic_properties
+            else:
+                properties = self.custom_properties
+            if isinstance(obj, bpy.types.bpy_struct):
+                key = obj.as_pointer()
+            else:
+                key = id(obj)
+            if create and key not in properties:
+                properties[key] = {}
+            return key, properties
+
+        def add_property(self, obj, attr, prop, dynamic):
+            key, properties = self.key_props(obj, dynamic)
+            ob_props = properties[key]
+            if attr in ob_props:
+                ob_props[attr][1] = [prop]
+            else:
+                ob_props[attr] = [prop, set()]
+            if dynamic:
+                self.key_object[key] = obj
+
+        def remove_property(self, obj, attr, dynamic):
+            key, properties = self.key_props(obj, dynamic)
+            del properties[key][attr]
+            if not properties[key]:
+                del properties[key]
+                if dynamic:
+                    del self.key_object[key]
+
+    _data = _Data()
+
+    def _fget(self):
         return False
-    def fset(self, value):
-        common_data = self.__class__._common_data
-        if common_data['attr'] is not None and value:
-            attr, prop = common_data['attr']
-            for cls in common_data['classes']:
-                setattr(cls, attr, prop)
-            common_data['attrs'][attr] = prop
-            common_data['attr'] = None
-    setattr = bpy.props.BoolProperty(get=fget, set=fset)
-    del fget, fset
 
-    @staticmethod
-    def _hashable(obj):
-        try:
-            hash(obj)
-            return True
-        except TypeError:  # e.g. TypeError: unhashable type: 'list'
-            return False
+    def _fset(self, value):
+        cls = self.__class__
+        data = cls._data
+        if data.temporary_data is not None:
+            attr, prop = data.temporary_data
+            setattr(cls, attr, prop)
+            data.temporary_data = None
+    attribute_set_trigger = bpy.props.BoolProperty(get=_fget, set=_fset)
+
+    def _fget(self):
+        return False
+
+    def _fset(self, value):
+        cls = self.__class__
+        data = cls._data
+        if data.temporary_data is not None:
+            attr = data.temporary_data
+            delattr(cls, attr)
+            data.temporary_data = None
+
+    attribute_delete_trigger = bpy.props.BoolProperty(get=_fget, set=_fset)
+    del _fget, _fset
 
     @classmethod
     def active(cls):
-        """PointerPropertyとしてのPyCustomPropertiesを返す。
-        :rtype: PyCustomProperty
+        """PointerPropertyとしてのPyCustomPropertyを返す。
+        :rtype: _CustomProperty
         """
-        return getattr(bpy.context.window_manager, cls._props_attr)
+        return getattr(bpy.context.window_manager, cls._data.wm_attribute)
 
     @classmethod
-    def set(cls, obj, attr, prop):
+    def attribute(cls, obj, attr, dynamic):
+        """PyCustomPropertyの属性名を返す
+        :type obj: T
+        :type attr: str
+        :type dynamic: bool
+        :rtype: str
+        """
+        import inspect
+        if inspect.isclass(obj):
+            if issubclass(obj, bpy.types.bpy_struct):
+                name = 'bpy_struct_' + obj.__name__
+            else:
+                name = obj.__name__
+        else:
+            name = obj.__class__.__name__
+        if isinstance(obj, bpy.types.bpy_struct):
+            id_value = obj.as_pointer()
+        else:
+            id_value = id(obj)
+        if dynamic:
+            head = 'dyn'
+        else:
+            head = 'cus'
+        return '{}_{}_{}_{}'.format(head, name, id_value, attr)
+
+    @classmethod
+    def _gen_dynamic_property(cls, attr):
+        """property()用のget,set関数を作って、それをproperty()に渡して
+        結果を返す
+        """
+        def fget(self):
+            wm_attr = cls.attribute(self, attr, True)
+            cls.ensure(self, attr)
+            wm_custom_prop = cls.active()
+            return getattr(wm_custom_prop, wm_attr)
+
+        def fset(self, value):
+            wm_attr = cls.attribute(self, attr, True)
+            cls.ensure(self, attr)
+            wm_custom_prop = cls.active()
+            setattr(wm_custom_prop, wm_attr, value)
+
+        return property(fget, fset)
+
+    @classmethod
+    def dynamic_property(cls, obj, attr, prop):
+        import inspect
+        if not inspect.isclass(obj):
+            raise ValueError()
+
+        cls._data.add_property(obj, attr, prop, True)
+
+        setattr(obj, attr, cls._gen_dynamic_property(attr))
+
+    @classmethod
+    def _property_delete(cls, obj, attr, dynamic):
+        wm_custom_prop = cls.active()
+        key, properties = cls._data.key_props(obj, dynamic)
+        _prop, users = properties[key][attr]
+        for wm_attr in users:
+            cls._data.temporary_data = wm_attr
+            wm_custom_prop.attribute_delete_trigger = True
+        cls._data.remove_property(obj, attr, dynamic)
+
+    @classmethod
+    def dynamic_property_delete(cls, obj, attr):
+        import inspect
+        if not inspect.isclass(obj):
+            raise ValueError()
+
+        cls._property_delete(obj, attr, True)
+        delattr(obj, attr)
+
+    @classmethod
+    def custom_property(cls, obj, attr, prop, ensure=True):
         """プロパティを登録する
         :param obj: インスタンスかそのクラス
         :type obj: T
         :param attr: 属性名の文字列。コンテナのキー等の場合は角括弧で囲む。
-            例: 'attr', '["key"]', '[2]', 'collection[5]', 'foo.bar.baz'
+            例: 'hoge', '["key"]', '[2]', 'collection[5]', 'foo.bar.baz'
         :type attr: str
         :param prop: (bpy.props.BoolProperty, {'name': 'Test', ...})
         :type prop: tuple
+        :type ensure: bool
         """
-        if 'get' in prop[1] or 'set' in prop[1]:
-            msg = '{}: {}: {}: get, set の関数は設定してはいけない'.format(
-                obj, attr, prop
-            )
-            raise ValueError(msg)
-        common_data = cls._common_data
-        prop = (prop[0], prop[1].copy())
-        id_value = id(obj)
-        if cls._hashable(obj):
-            if obj not in common_data['object_props']:
-                common_data['object_props'][obj] = {}
-            props = common_data['object_props'][obj]
-            props[attr] = prop
-            common_data['object_props'][id_value] = props
-        else:
-            if id_value not in common_data['object_props']:
-                common_data['object_props'][id_value] = {}
-            common_data['object_props'][id_value][attr] = prop
 
-        return cls.ensure(obj, attr)[attr]
+        cls._data.add_property(obj, attr, prop, False)
+
+        if ensure:
+            return cls.ensure(obj, attr)[attr]
 
     @classmethod
-    def _gen_func(cls, obj, attr, wm_attr, prop):
+    def custom_property_delete(cls, obj, attr):
+        cls._property_delete(obj, attr, False)
+        delattr(obj, attr)
+
+    @classmethod
+    def _gen_dynamic_property_functions(cls, obj, prop):
+        """objはインスタンス"""
+        # get function ----------------------------------------------
+        if 'get' in prop[1]:
+            def fget(self, func=prop[1]['get']):
+                return func(obj)
+            fget._get = prop[1]['get']
+        else:
+            fget = None
+
+        # set function ----------------------------------------------
+        if 'set' in prop[1]:
+            def fset(self, value, func=prop[1]['set']):
+                func(obj, value)
+            fset._set = prop[1]['set']
+        else:
+            fset = None
+
+        # update function -------------------------------------------
+        if 'update' in prop[1]:
+            def update(self, context, func=prop[1]['update']):
+                func(obj, context)
+            update._update = prop[1]['update']
+        else:
+            update = None
+
+        return fget, fset, update
+
+    @classmethod
+    def _gen_custom_property_functions(cls, obj, attr, wm_attr, prop):
         def get_value():
             import traceback
             try:
@@ -277,9 +433,11 @@ class PyCustomProperty(bpy.types.PropertyGroup):
                 else:
                     return eval('obj.' + attr, {'obj': obj})
             except:
-                print("{} Error: '{}'".format(
-                      cls.__name__, attr, wm_attr))
-                traceback.print_exc()
+                # クラスを登録していてインスタンスのみensureしている状態で
+                # コンソールで補完した時に警告がうるさいのでコメントアウト
+                # print("{} Error: {} '{}' '{}'".format(
+                #       cls.__name__, obj, attr, wm_attr))
+                # traceback.print_exc()
                 return None
 
         def set_value(value):
@@ -295,13 +453,14 @@ class PyCustomProperty(bpy.types.PropertyGroup):
                       cls.__name__, attr, wm_attr))
                 traceback.print_exc()
 
+        # get function ----------------------------------------------
         if 'get' in prop[1]:
             def fget(self, func=prop[1]['get']):
                 return func(obj)
+
             fget._get = prop[1]['get']
 
         else:
-            # TODO: 警告とかどうするか...
             def fget(self):
                 import inspect
                 import traceback
@@ -325,7 +484,7 @@ class PyCustomProperty(bpy.types.PropertyGroup):
                                         r += 1 << i
                                 except:
                                     print("{} Error: '{}'".format(
-                                          cls.__name__, attr, wm_attr))
+                                        cls.__name__, attr, wm_attr))
                                     traceback.print_exc()
                                     return -1
                             return r
@@ -381,8 +540,8 @@ class PyCustomProperty(bpy.types.PropertyGroup):
                                     cls.__name__, wm_attr))
                                 print('Expected <type: {}, length: {}>, '
                                       'got {} {}'.format(
-                                          p.type, p.array_length, type(value),
-                                          value))
+                                    p.type, p.array_length, type(value),
+                                    value))
                                 value = None
                         if value is None:
                             value = tuple(p.default_array)
@@ -396,7 +555,7 @@ class PyCustomProperty(bpy.types.PropertyGroup):
                                 invalid = True
                             if invalid:
                                 print("{} error: get function of '{}'".format(
-                                      cls.__name__, wm_attr))
+                                    cls.__name__, wm_attr))
                                 print('Expected <type: {}>, '
                                       'got {} {}'.format(p.type, type(value),
                                                          value))
@@ -405,6 +564,7 @@ class PyCustomProperty(bpy.types.PropertyGroup):
                             value = p.default
                     return value
 
+        # set function ----------------------------------------------
         if 'set' in prop[1]:
             def fset(self, value, func=prop[1]['set']):
                 func(obj, value)
@@ -449,11 +609,15 @@ class PyCustomProperty(bpy.types.PropertyGroup):
                     else:
                         set_value(value)
 
+                # IDPropertyへの適用
+                wm_custom_prop = cls.active()
+                wm_custom_prop[wm_attr] = value
+
+        # update function -------------------------------------------
         if 'update' in prop[1]:
             def update(self, context, func=prop[1]['update']):
                 func(obj, context)
             update._update = prop[1]['update']
-
         else:
             update = None
 
@@ -463,99 +627,269 @@ class PyCustomProperty(bpy.types.PropertyGroup):
     def ensure(cls, obj, *attributes):
         """各オブジェクト用のプロパティを追加する
         attrが空なら登録済みの属性を全て適用する
+        :return: 属性名をキー、それが使用するカスタムプロパティの属性名を値と
+            した辞書を返す。
+            ただしcustomとdynamic両方が登録されていて共に有効なら
+            辞書の値は (customの属性名, dynamicの属性名) となる。
+        :rtype: dict
         """
-        import inspect
-
-        common_data = cls._common_data
-        object_props = common_data['object_props']
-
-        cls_ = obj.__class__
-        props = {}
-        if cls._hashable(cls_) and cls_ in object_props:
-            props.update(object_props[cls_])
-        if id(cls_) in object_props:
-            props.update(object_props[id(cls_)])
-        if cls._hashable(obj) and obj in object_props:
-            props.update(object_props[obj])
-        if id(obj) in object_props:
-            props.update(object_props[id(obj)])
+        from collections import OrderedDict
 
         attr_mapping = {}
-        if not attributes:
-            attributes = props.keys()
-        for attr in attributes:
-            if attr not in props:
-                msg = "プロパティが未設定: {}: '{}'".format(obj, attr)
-                raise ValueError(msg)
 
-            if inspect.isclass(obj):
-                name = obj.__name__
+        wm_custom_prop = cls.active()
+        data = cls._data
+
+        attr_prop = OrderedDict()
+        for ob in [obj, obj.__class__]:
+            for dynamic in (False, True):
+                key, properties = data.key_props(ob, dynamic)
+                ob_props = properties[key]
+                for attr in (attributes or ob_props.keys()):
+                    if attr in ob_props and (attr, dynamic) not in attr_prop:
+                        if dynamic and ob is obj:
+                            continue
+                        attr_prop[(attr, dynamic)] = [ob, ob_props]
+
+        for (attr, dynamic), (ob, ob_props) in attr_prop.items():
+            prop, users = ob_props[attr]
+            wm_attr = cls.attribute(obj, attr, dynamic)
+
+            # 変更が無ければ飛ばす
+            if wm_attr in data.attribute_property:
+                obj_, attr_, ob_, prop_ = data.attribute_property[wm_attr]
+                if prop_ == prop:
+                    if attr in attr_mapping:
+                        attr_mapping[attr] = (attr_mapping[attr], wm_attr)
+                    else:
+                        attr_mapping[attr] = wm_attr
+                    continue
+
+                # これを利用してるものを消す
+                for wm_attr_ in users:
+                    if hasattr(cls, wm_attr_):
+                        data.temporary_data = wm_attr_
+                        wm_custom_prop.attribute_delete_trigger = True
+                        del data.attribute_property[wm_attr_]
+                users.clear()
+
+            if dynamic:
+                fget, fset, update = cls._gen_dynamic_property_functions(
+                    obj, prop)
             else:
-                name = obj.__class__.__name__
-            wm_attr = '{}_{}_{}'.format(name, id(obj), attr)
-            attr_mapping[attr] = wm_attr
-
-            prop = (props[attr][0], props[attr][1].copy())
-            fget, fset, update = cls._gen_func(obj, attr, wm_attr, prop)
-            prop[1]['get'] = fget
-            prop[1]['set'] = fset
+                fget, fset, update = cls._gen_custom_property_functions(
+                    obj, attr, wm_attr, prop)
+            prop_new = (prop[0], prop[1].copy())
+            if fget:
+                prop_new[1]['get'] = fget
+            if fset:
+                prop_new[1]['set'] = fset
             if update:
-                prop[1]['update'] = update
+                prop_new[1]['update'] = update
 
             # 属性追加の為の関数を呼び出す
-            common_data['attr'] = [wm_attr, prop]
-            custom_props = cls.active()
-            custom_props.setattr = True
+            data.temporary_data = [wm_attr, prop_new]
+            wm_custom_prop.attribute_set_trigger = True
+
+            data.attribute_property[wm_attr] = [obj, attr, ob, prop]
+            ob_props[attr][1].add(wm_attr)
+            if attr in attr_mapping:
+                attr_mapping[attr] = (attr_mapping[attr], wm_attr)
+            else:
+                attr_mapping[attr] = wm_attr
 
         return attr_mapping
 
     @classmethod
-    def _common_data_init(cls):
-        cls_ = getattr(bpy.types, cls.__name__)
-        if cls_ == cls:
-            cls._common_data = {
-                'classes': [],
-                'object_props': {},
-                'attr': None,  # setattrで使用する。[key, value]
-                'attrs': {},  # 追加した属性
-            }
+    def save_handler_add(cls, func, persistent=True):
+        PERMINENT_CB_ID = '_bpy_persistent'
+        if persistent:
+            func = bpy.app.handlers.persistent(func)
         else:
-            cls._common_data = cls_._common_data
+            if hasattr(func, PERMINENT_CB_ID):
+                delattr(func, PERMINENT_CB_ID)
+        bpy.app.handlers.save_pre.append(func)
+        cls._data.save_handlers.append(func)
 
     @classmethod
-    def _custom_props_init(cls):
-        if cls._common_data is None:
-            cls._common_data_init()
-        classes = cls._common_data['classes']
-        cls_ = classes[0] if classes else cls
-        setattr(bpy.types.WindowManager, cls._props_attr,
-                bpy.props.PointerProperty(type=cls_))
+    def save_handler_remove(cls, func):
+        bpy.app.handlers.save_pre.remove(func)
+        cls._data.save_handlers.remove(func)
 
     @classmethod
-    def _custom_props_del(cls):
-        if hasattr(bpy.types.WindowManager, cls._props_attr):
-            delattr(bpy.types.WindowManager, cls._props_attr)
+    def load_handler_add(cls, func, persistent=True):
+        PERMINENT_CB_ID = '_bpy_persistent'
+        if persistent:
+            func = bpy.app.handlers.persistent(func)
+        else:
+            if hasattr(func, PERMINENT_CB_ID):
+                delattr(func, PERMINENT_CB_ID)
+        bpy.app.handlers.load_post.append(func)
+        cls._data.load_handlers.append(func)
+
+    @classmethod
+    def load_handler_remove(cls, func):
+        bpy.app.handlers.load_post.remove(func)
+        cls._data.load_handlers.remove(func)
+
+    @classmethod
+    def _increment(cls, name):
+        import re
+        m = re.match('(.*?)(\d*)$', name)
+        return m.group(1) + str((int(m.group(2)) + 1) if m.group(2) else 1)
+
+    @classmethod
+    def idprop_to_py(cls, prop):
+        if isinstance(prop, list):
+            return [idprop_to_py(p) for p in prop]
+        elif hasattr(prop, 'to_dict'):
+            return prop.to_dict()
+        elif hasattr(prop, 'to_list'):
+            return prop.to_list()
+        else:
+            return prop
+
+    @classmethod
+    def prop_to_py(cls, obj, attr, dynamic=None):
+        """IDPropertyをpythonの組み込み型に変換して返す
+        :type obj: T
+        :type attr: str
+        :param dynamic: Noneなら両方
+        :type dynamic: bool | None
+        :return: dynamicがNoneでcustomとdynamic両方あるなら
+            (customのプロパティ, dynamicのプロパティ) を返す。
+            dynamicが真か偽ならそれぞれのプロパティを返す。
+            存在しないならNoneを返す
+        """
+        wm_custom_prop = cls.active()
+        prop_custom = prop_dynamic = None
+        if dynamic is None or not dynamic:
+            attr = cls.attribute(obj, attr, False)
+            if attr in wm_custom_prop:
+                prop_custom = cls.idprop_to_py(wm_custom_prop[attr])
+        if dynamic is None or dynamic:
+            attr = cls.attribute(obj, attr, True)
+            if attr in wm_custom_prop:
+                prop_dynamic = cls.idprop_to_py(wm_custom_prop[attr])
+        if dynamic is None:
+            if prop_custom is not None and prop_dynamic is not None:
+                return prop_custom, prop_dynamic
+            elif prop_custom is not None:
+                return prop_custom
+            else:
+                return prop_dynamic
+        elif dynamic:
+            return prop_dynamic
+        else:
+            return prop_custom
 
     @classmethod
     def register(cls):
-        cls._common_data_init()
-        common_data = cls._common_data
-        common_data['classes'].append(cls)
-        for attr, value in common_data['attrs'].items():
-            setattr(cls, attr, value)
-        cls._custom_props_init()
+        data = cls._data = cls._Data()
+
+        while hasattr(bpy.types.WindowManager, data.wm_attribute):
+            data.wm_attribute = cls._increment(data.wm_attribute)
+        setattr(bpy.types.WindowManager, data.wm_attribute,
+                bpy.props.PointerProperty(type=cls))
 
     @classmethod
     def unregister(cls):
-        common_data = cls._common_data
-        for attr in common_data['attrs']:
-            delattr(cls, attr)
-        common_data['classes'].remove(cls)
-        if common_data['classes']:
-            cls._custom_props_init()
-        else:
-            cls._custom_props_del()
-        cls._common_data = None
+        data = cls._data
+
+        for ob_key, ob_props in data.dynamic_properties.items():
+            if ob_key in data.key_object:
+                obj = data.key_object[ob_key]
+            for attr in ob_props:
+                if hasattr(obj, attr):
+                    delattr(obj, attr)
+
+        for attr in data.attribute_property:
+            if hasattr(cls, attr):
+                delattr(cls, attr)
+
+        delattr(bpy.types.WindowManager, data.wm_attribute)
+
+        # save/load handlersの消し忘れを取り除く
+        for func in data.save_handlers:
+            if func in bpy.app.handlers.save_pre:
+                bpy.app.handlers.save_pre.remove(func)
+        for func in data.load_handlers:
+            if func in bpy.app.handlers.load_post:
+                bpy.app.handlers.load_post.remove(func)
+
+        cls._data = cls._Data()
+
+    @classmethod
+    def new_class(cls):
+        """:rtype: CustomProperty"""
+        return type('CustomProperty',
+                    (_CustomProperty, bpy.types.PropertyGroup), {})
+
+    # Utils ---------------------------------------------------------
+    @classmethod
+    def register_space_property(cls, obj, attr, prop):
+        import inspect
+        if not inspect.isclass(obj):
+            raise ValueError()
+
+        cls.dynamic_property(obj, attr, prop)
+
+        idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
+
+        def saev_pre(scene):
+            for screen in bpy.data.screens:
+                data = []
+                for area in screen.areas:
+                    for space in area.spaces:
+                        if isinstance(space, obj):
+                            value = cls.prop_to_py(space, attr, True)
+                            if value is None:
+                                value = {}
+                            data.append(value)
+                screen[idprop_key] = data
+
+        saev_pre.key = idprop_key
+        cls.save_handler_add(saev_pre)
+
+        def load_post(scene):
+            custom_prop = cls.active()
+            for screen in bpy.data.screens:
+                if idprop_key not in screen:
+                    continue
+
+                data = screen[idprop_key]
+                i = 0
+                for area in screen.areas:
+                    for space in area.spaces:
+                        if isinstance(space, obj):
+                            a = cls.attribute(space, attr, True)
+                            custom_prop[a] = data[i]
+                            i += 1
+                del screen[idprop_key]
+
+        load_post.key = idprop_key
+        cls.load_handler_add(load_post)
+
+    @classmethod
+    def unregister_space_property(cls, obj, attr):
+        import inspect
+        if not inspect.isclass(obj):
+            raise ValueError()
+
+        idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
+
+        cls.dynamic_property_delete(obj, attr)
+
+        for func in cls._data.save_handlers:
+            if getattr(func, 'key', None) == idprop_key:
+                cls.save_handler_remove(func)
+        for func in cls._data.load_handlers:
+            if getattr(func, 'key', None) == idprop_key:
+                cls.load_handler_remove(func)
+
+
+class CustomProperty(_CustomProperty, bpy.types.PropertyGroup):
+    pass
 
 
 def test():
@@ -565,15 +899,16 @@ def test():
     >>> customproperty.test()
     """
 
-    if hasattr(bpy.types, PyCustomProperty.__name__):
-        bpy.utils.unregister_class(
-            getattr(bpy.types, PyCustomProperty.__name__))
-    bpy.utils.register_class(PyCustomProperty)
+    CP = CustomProperty.new_class()
+    # if hasattr(bpy.types, CustomProperty.__name__):
+    #     bpy.utils.unregister_class(
+    #         getattr(bpy.types, CustomProperty.__name__))
+    bpy.utils.register_class(CP)
 
-    if hasattr(bpy.types, CollectionPropertyOperators.__name__):
-        bpy.utils.unregister_class(
-            getattr(bpy.types, CollectionPropertyOperators.__name__))
-    bpy.utils.register_class(CollectionPropertyOperators)
+    # if hasattr(bpy.types, CPOperators.__name__):
+    #     bpy.utils.unregister_class(
+    #         getattr(bpy.types, CPOperators.__name__))
+    bpy.utils.register_class(CPOperators)
 
     class CustomItem:
         def __init__(self):
@@ -584,7 +919,7 @@ def test():
             self.int_value = 1
             self.float_value = 1.0
             self.bool_value = True
-            self.str_value = 100
+            self.str_value = '100'
 
             self.int_array = [1,2,3]
             self.float_array = [1.0, 2.0, 3.0]
@@ -606,36 +941,36 @@ def test():
 
         def draw(self, context):
             # プロパティの登録
-            custom_props = PyCustomProperty.active()
-            custom_props.set(
+            wm_custom_prop = CP.active()
+            wm_custom_prop.custom_property(
                 CustomGroup, 'int_value', bpy.props.IntProperty())
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'float_value', bpy.props.FloatProperty())
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'bool_value', bpy.props.BoolProperty())
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'str_value', bpy.props.StringProperty())
 
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'int_array',
-                bpy.props.IntVectorProperty(size=2))
-            custom_props.set(
+                bpy.props.IntVectorProperty(size=3))
+            wm_custom_prop.custom_property(
                 CustomGroup, 'float_array',
                 bpy.props.FloatVectorProperty(size=3))
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'bool_array',
                 bpy.props.BoolVectorProperty(size=3))
 
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'bool_array[1]',
                 bpy.props.BoolProperty()
             )
 
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'enum',
                 bpy.props.EnumProperty(
                     items=[('A', 'A', ''), ('B', 'B', ''), ('C', 'C', '')]))
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'enum_flag',
                 bpy.props.EnumProperty(
                     items=[('A', 'A', ''), ('B', 'B', ''), ('C', 'C', '')],
@@ -644,28 +979,28 @@ def test():
                 items = [('A', 'A', ''), ('B', 'B', ''), ('C', 'C', '')]
                 items_get._items = items
                 return items
-            custom_props.set(
+            wm_custom_prop.custom_property(
                 CustomGroup, 'enum_flag_func',
                 bpy.props.EnumProperty(items=items_get, options={'ENUM_FLAG'}))
 
             layout = self.layout
 
             # 描画
-            attrs = custom_props.ensure(group)
-            layout.prop(custom_props, attrs['int_value'])
-            layout.prop(custom_props, attrs['float_value'])
-            layout.prop(custom_props, attrs['bool_value'])
-            layout.prop(custom_props, attrs['str_value'])
+            attrs = wm_custom_prop.ensure(group)
+            layout.prop(wm_custom_prop, attrs['int_value'])
+            layout.prop(wm_custom_prop, attrs['float_value'])
+            layout.prop(wm_custom_prop, attrs['bool_value'])
+            layout.prop(wm_custom_prop, attrs['str_value'])
 
-            layout.prop(custom_props, attrs['int_array'])
-            layout.prop(custom_props, attrs['float_array'])
-            layout.prop(custom_props, attrs['bool_array'])
+            layout.prop(wm_custom_prop, attrs['int_array'])
+            layout.prop(wm_custom_prop, attrs['float_array'])
+            layout.prop(wm_custom_prop, attrs['bool_array'])
 
-            layout.prop(custom_props, attrs['bool_array[1]'])
+            layout.prop(wm_custom_prop, attrs['bool_array[1]'])
 
-            layout.prop(custom_props, attrs['enum'])
-            layout.prop(custom_props, attrs['enum_flag'])
-            layout.prop(custom_props, attrs['enum_flag_func'])
+            layout.prop(wm_custom_prop, attrs['enum'])
+            layout.prop(wm_custom_prop, attrs['enum_flag'])
+            layout.prop(wm_custom_prop, attrs['enum_flag_func'])
 
             # group.item_listの登録と描画
 
@@ -673,17 +1008,17 @@ def test():
             identifier = str(id(group)) + '_collection'
             def item_add_func(context, group=group):
                 group.item_list.append(CustomItem())
-            CollectionPropertyOperators.Add.register_function(
+            CPOperators.Add.register_function(
                 identifier, item_add_func)
             # ボタン描画
-            op = layout.operator('wm.collection_add', text='Add')
+            op = layout.operator(CPOperators.Add.bl_idname, text='Add')
             op.function = identifier
 
             def draw_item(layout, obj):
-                custom_props.set(
+                wm_custom_prop.custom_property(
                     CustomItem, 'a', bpy.props.IntProperty())
-                attrs = custom_props.ensure(obj)
-                layout.prop(custom_props, attrs['a'])
+                attrs = wm_custom_prop.ensure(obj)
+                layout.prop(wm_custom_prop, attrs['a'])
 
             column = layout.column()
 
@@ -703,16 +1038,16 @@ def test():
                     item = group.item_list[index_from]
                     group.item_list[index_from: index_from + 1] = []
                     group.item_list.insert(index_to, item)
-                CollectionPropertyOperators.Move.register_function(
+                CPOperators.Move.register_function(
                     identifier, item_move_func)
                 # Up
-                op = sub.operator('wm.collection_move', text='',
+                op = sub.operator(CPOperators.Move.bl_idname, text='',
                                   icon='TRIA_UP')
                 op.function = identifier
                 op.index_from = i
                 op.index_to = max(0, i - 1)
                 # Down
-                op = sub.operator('wm.collection_move', text='',
+                op = sub.operator(CPOperators.Move.bl_idname, text='',
                                   icon='TRIA_DOWN')
                 op.function = identifier
                 op.index_from = i
@@ -722,10 +1057,10 @@ def test():
                 def item_remove_func(context, index, group=group):
                     group.item_list[index: index + 1] = []
 
-                CollectionPropertyOperators.Remove.register_function(
+                CPOperators.Remove.register_function(
                     identifier, item_remove_func)
                 # Delete
-                op = sub.operator('wm.collection_remove', text='',
+                op = sub.operator(CPOperators.Remove.bl_idname, text='',
                                   icon='X')
                 op.function = identifier
                 op.index = i

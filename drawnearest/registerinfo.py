@@ -24,9 +24,9 @@ import bpy
 
 
 try:
-    from .customproperty import PyCustomProperty
+    from .customproperty import CustomProperty
 except:
-    from _addon_customproperty import PyCustomProperty
+    from _addon_customproperty import CustomProperty
 
 __all__ = ['AddonRegisterInfo']
 

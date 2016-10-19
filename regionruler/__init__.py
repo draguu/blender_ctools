@@ -74,6 +74,7 @@ from bpy.app.handlers import persistent
 # from va.unitsystem import UnitSystem
 try:
     importlib.reload(addongroup)
+    importlib.reload(customproperty)
     importlib.reload(registerinfor)
     importlib.reload(unitsystem)
     importlib.reload(utils)
@@ -84,6 +85,7 @@ try:
     importlib.reload(vawm)
 except NameError:
     from . import addongroup
+    from . import customproperty
     from . import registerinfo
     from . import unitsystem
     from . import utils
@@ -280,14 +282,6 @@ class RegionRuler_PG(bpy.types.PropertyGroup):
         update=_update_redraw)
 
 
-space_prop = utils.SpaceProperty(
-    [bpy.types.SpaceView3D, 'region_ruler', RegionRuler_PG],
-    [bpy.types.SpaceImageEditor, 'region_ruler', RegionRuler_PG],
-    [bpy.types.SpaceNodeEditor, 'region_ruler', RegionRuler_PG]
-
-)
-
-
 class RegionRulerPreferences(
         addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
@@ -451,7 +445,7 @@ def get_widget_unit(context):
 
 def get_view_location(context):
     prefs = RegionRulerPreferences.get_instance()
-    ruler_settings = space_prop.get(context.space_data, 'region_ruler')
+    ruler_settings = context.space_data.region_ruler
     region = context.region
     rv3d = context.region_data
     if ruler_settings.view_depth == 'cursor':
@@ -569,7 +563,7 @@ class Data:
         event = data.events[context.window.as_pointer()]
         region = context.region
         sx, sy = region.width, region.height
-        ruler_settings = space_prop.get(context.space_data, 'region_ruler')
+        ruler_settings = context.space_data.region_ruler
 
         if context.area.type == 'VIEW_3D':
             v3d = context.space_data
@@ -1609,7 +1603,7 @@ def draw_unit_box(context, use_fill):
 def draw_measure(context, event):
     """ポイントが空の場合、深度は3DカーソルかViewLocationを使い、
     ポイントの続きの場合はその深度に合わせる。"""
-    ruler_settings = space_prop.get(context.space_data, 'region_ruler')
+    ruler_settings = context.space_data.region_ruler
     running_measure = ruler_settings.measure
     prefs = RegionRulerPreferences.get_instance()
     region = context.region
@@ -2055,7 +2049,7 @@ def draw_mouse_coordinates_lower_right(context, event, use_fill):
 
 def draw_mouse_coordinates(context, event, use_fill):
     wm = context.window_manager
-    ruler_settings = space_prop.get(context.space_data, 'region_ruler')
+    ruler_settings = context.space_data.region_ruler
     running_measure = ruler_settings.measure
     prefs = RegionRulerPreferences.get_instance()
     # data.mcbox_x, data.ymcboxの計算だけは必要なので
@@ -2189,7 +2183,7 @@ def draw_callback(context):
     #       context.screen.name, context.area.as_pointer(), context.region.id))
     wm = context.window_manager
     window = context.window
-    prop = space_prop.get(context.space_data, 'region_ruler')
+    prop = context.space_data.region_ruler
     prefs = RegionRulerPreferences.get_instance()
     ptr = window.as_pointer()
 
@@ -2543,7 +2537,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
             area = None
         if area:
             space = area.spaces.active
-            prop = space_prop.get(space, 'region_ruler')
+            prop = space.region_ruler
             if prop.enable:
                 if do_redraw and region:
                     region.tag_redraw()
@@ -2559,7 +2553,7 @@ class VIEW3D_OT_region_ruler(bpy.types.Operator):
             prev_area = None
         if prev_area and prev_region and prev_region != region:
             space = prev_area.spaces.active
-            prop = space_prop.get(space, 'region_ruler')
+            prop = space.region_ruler
             if prop.enable:
                 prev_region.tag_redraw()
 
@@ -2638,7 +2632,7 @@ class VIEW3D_PT_region_ruler_base:
 
     def draw(self, context):
         wm = context.window_manager
-        ruler_settings = space_prop.get(context.space_data, 'region_ruler')
+        ruler_settings = context.space_data.region_ruler
 
         layout = self.layout
 
@@ -2689,7 +2683,7 @@ class VIEW3D_PT_region_ruler_base:
     def draw_header(self, context):
         # draw関数の中では一部のプロパティの変更が効かないので
         # sync_spacesやget_settings(no_add=False)を実行しない。
-        ruler_settings = space_prop.get(context.space_data, 'region_ruler')
+        ruler_settings = context.space_data.region_ruler
         self.layout.prop(ruler_settings, 'enable', text='')
 
 
@@ -2751,7 +2745,7 @@ def load_post_handler(dummy):
                   for area in screen.areas
                   for space in area.spaces
                   if space.type in {'VIEW_3D', 'IMAGE_EDITOR', 'NODE_EDITOR'}):
-        prop = space_prop.get(space, 'region_ruler')
+        prop = space.region_ruler
         if prop.enable:
             add_callback = True
             break
@@ -2780,6 +2774,8 @@ def scene_update_post_handler(dummy):
                                'INVOKE_DEFAULT', _scene_update=False)
 
 
+CustomProperty = customproperty.CustomProperty.new_class()
+
 auto_save_manager = utils.AutoSaveManager()
 
 
@@ -2793,6 +2789,7 @@ classes = [
     VIEW3D_PT_region_ruler,
     VIEW3D_PT_region_ruler_image,
     VIEW3D_PT_region_ruler_node,
+    CustomProperty,
 ]
 
 
@@ -2825,8 +2822,17 @@ def register():
 
     for cls in classes:
         bpy.utils.register_class(cls)
-    space_prop.register()
     auto_save_manager.register()
+
+    CustomProperty.register_space_property(
+        bpy.types.SpaceView3D, 'region_ruler',
+        bpy.props.PointerProperty(type=RegionRuler_PG))
+    CustomProperty.register_space_property(
+        bpy.types.SpaceImageEditor, 'region_ruler',
+        bpy.props.PointerProperty(type=RegionRuler_PG))
+    CustomProperty.register_space_property(
+        bpy.types.SpaceNodeEditor, 'region_ruler',
+        bpy.props.PointerProperty(type=RegionRuler_PG))
 
     bpy.types.Event.mco = property(event_mco_get)
     bpy.types.Event.mco_prev = property(event_mco_prev_get)
@@ -2854,8 +2860,14 @@ def unregister():
     logger.debug('Unregister RegionRuler')
     draw_handler_remove()
 
+    CustomProperty.unregister_space_property(
+        bpy.types.SpaceView3D, 'region_ruler')
+    CustomProperty.unregister_space_property(
+        bpy.types.SpaceImageEditor, 'region_ruler')
+    CustomProperty.unregister_space_property(
+        bpy.types.SpaceNodeEditor, 'region_ruler')
+
     auto_save_manager.unregister()
-    space_prop.unregister()
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
 
