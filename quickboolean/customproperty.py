@@ -17,43 +17,14 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
-"""
-structure:
-set(type, attr, prop)
-
-PointerPropertyとCollectionPropertyのtypeには辞書を指定して自動で
-型の生成と登録を行う
-"""
-
-"""
-NOTE: RNA_def_struct_idprops_func()でidproperに値を指定しているものがIDPropertyを持つ
-% grep -rn RNA_def_struct_idprops_func
-blender/makesrna/intern/rna_sequencer.c:1420:	RNA_def_struct_idprops_func(srna, "rna_Sequence_idprops");
-blender/makesrna/intern/rna_constraint.c:899:	RNA_def_struct_idprops_func(srna, "rna_PythonConstraint_idprops");
-blender/makesrna/intern/rna_nodetree.c:6889:	RNA_def_struct_idprops_func(srna, "rna_NodeSocket_idprops");
-blender/makesrna/intern/rna_nodetree.c:7013:	RNA_def_struct_idprops_func(srna, "rna_NodeSocketInterface_idprops");
-blender/makesrna/intern/rna_nodetree.c:7653:	RNA_def_struct_idprops_func(srna, "rna_Node_idprops");
-blender/makesrna/intern/rna_define.c:936:void RNA_def_struct_idprops_func(StructRNA *srna, const char *idproperties)
-blender/makesrna/intern/rna_ui.c:1041:	RNA_def_struct_idprops_func(srna, "rna_UIList_idprops");
-blender/makesrna/intern/rna_pose.c:795:	RNA_def_struct_idprops_func(srna, "rna_PoseBone_idprops");
-blender/makesrna/intern/rna_userdef.c:3262:	RNA_def_struct_idprops_func(srna, "rna_AddonPref_idprops");
-blender/makesrna/intern/rna_ID.c:796:	RNA_def_struct_idprops_func(srna, "rna_PropertyGroup_idprops");
-blender/makesrna/intern/rna_ID.c:933:	RNA_def_struct_idprops_func(srna, "rna_ID_idprops");
-blender/makesrna/intern/rna_armature.c:715:	RNA_def_struct_idprops_func(srna, "rna_Bone_idprops");
-blender/makesrna/intern/rna_armature.c:811:	RNA_def_struct_idprops_func(srna, "rna_EditBone_idprops");
-blender/makesrna/intern/rna_wm.c:1556:	RNA_def_struct_idprops_func(srna, "rna_OperatorProperties_idprops");
-blender/makesrna/RNA_define.h:62:void RNA_def_struct_idprops_func(StructRNA *srna, const char *refine);
-"""
-
-
 import bpy
 
 
-class _CPOperators:
+class _CollectionOperator:
     """CollectionPropertyに対する複数のオペレータを纏めて登録する。
 
     最初にregister_classでこのクラスを登録しておく。
-    >>> bpy.utils.register_class(CPOperators)
+    >>> bpy.utils.register_class(CollectionOperator)
 
     bpy.ops.wm.collection_add(data_path='', function='')
     bpy.ops.wm.collection_remove(data_path='', function='', index=0)
@@ -68,7 +39,7 @@ class _CPOperators:
 
     class _OperatorCollection:
         bl_description = ''
-        bl_options = {'REGISTER'}
+        bl_options = {'REGISTER', 'INTERNAL'}
 
         _functions = None
         """:type: dict"""
@@ -164,7 +135,7 @@ class _CPOperators:
                                                self.index_to)
             return {'FINISHED'}
 
-    classes = [
+    _classes = [
         Add,
         Remove,
         Clear,
@@ -190,23 +161,24 @@ class _CPOperators:
 
     @classmethod
     def register(cls):
-        for c in cls.classes:
+        for c in cls._classes:
             while hasattr(bpy.types, cls._to_bl_idname(c.bl_idname)):
                 c.bl_idname = cls._increment(c.bl_idname)
             bpy.utils.register_class(c)
 
     @classmethod
     def unregister(cls):
-        for c in cls.classes:
+        for c in cls._classes:
             bpy.utils.unregister_class(c)
 
     @classmethod
     def new_class(cls):
-        """:rtype: CPOperators"""
-        return type('CPOperators', (_CPOperators, bpy.types.PropertyGroup), {})
+        """:rtype: CollectionOperator"""
+        return type('CollectionOperator',
+                    (_CollectionOperator, bpy.types.PropertyGroup), {})
 
 
-class CPOperators(_CPOperators, bpy.types.PropertyGroup):
+class CollectionOperator(_CollectionOperator, bpy.types.PropertyGroup):
     pass
 
 
@@ -741,7 +713,7 @@ class _CustomProperty:
     @classmethod
     def idprop_to_py(cls, prop):
         if isinstance(prop, list):
-            return [idprop_to_py(p) for p in prop]
+            return [cls.idprop_to_py(p) for p in prop]
         elif hasattr(prop, 'to_dict'):
             return prop.to_dict()
         elif hasattr(prop, 'to_list'):
@@ -905,10 +877,10 @@ def test():
     #         getattr(bpy.types, CustomProperty.__name__))
     bpy.utils.register_class(CP)
 
-    # if hasattr(bpy.types, CPOperators.__name__):
+    # if hasattr(bpy.types, CollectionOperator.__name__):
     #     bpy.utils.unregister_class(
-    #         getattr(bpy.types, CPOperators.__name__))
-    bpy.utils.register_class(CPOperators)
+    #         getattr(bpy.types, CollectionOperator.__name__))
+    bpy.utils.register_class(CollectionOperator)
 
     class CustomItem:
         def __init__(self):
@@ -1008,10 +980,10 @@ def test():
             identifier = str(id(group)) + '_collection'
             def item_add_func(context, group=group):
                 group.item_list.append(CustomItem())
-            CPOperators.Add.register_function(
+            CollectionOperator.Add.register_function(
                 identifier, item_add_func)
             # ボタン描画
-            op = layout.operator(CPOperators.Add.bl_idname, text='Add')
+            op = layout.operator(CollectionOperator.Add.bl_idname, text='Add')
             op.function = identifier
 
             def draw_item(layout, obj):
@@ -1038,16 +1010,16 @@ def test():
                     item = group.item_list[index_from]
                     group.item_list[index_from: index_from + 1] = []
                     group.item_list.insert(index_to, item)
-                CPOperators.Move.register_function(
+                CollectionOperator.Move.register_function(
                     identifier, item_move_func)
                 # Up
-                op = sub.operator(CPOperators.Move.bl_idname, text='',
+                op = sub.operator(CollectionOperator.Move.bl_idname, text='',
                                   icon='TRIA_UP')
                 op.function = identifier
                 op.index_from = i
                 op.index_to = max(0, i - 1)
                 # Down
-                op = sub.operator(CPOperators.Move.bl_idname, text='',
+                op = sub.operator(CollectionOperator.Move.bl_idname, text='',
                                   icon='TRIA_DOWN')
                 op.function = identifier
                 op.index_from = i
@@ -1057,10 +1029,10 @@ def test():
                 def item_remove_func(context, index, group=group):
                     group.item_list[index: index + 1] = []
 
-                CPOperators.Remove.register_function(
+                CollectionOperator.Remove.register_function(
                     identifier, item_remove_func)
                 # Delete
-                op = sub.operator(CPOperators.Remove.bl_idname, text='',
+                op = sub.operator(CollectionOperator.Remove.bl_idname, text='',
                                   icon='X')
                 op.function = identifier
                 op.index = i
@@ -1076,3 +1048,24 @@ def test():
     if hasattr(bpy.types, CustomPanel.__name__):
         bpy.utils.unregister_class(getattr(bpy.types, CustomPanel.__name__))
     bpy.utils.register_class(CustomPanel)
+
+
+"""
+NOTE: RNA_def_struct_idprops_func()でidproperに値を指定しているものがIDPropertyを持つ
+% grep -rn RNA_def_struct_idprops_func
+blender/makesrna/intern/rna_sequencer.c:1420:	RNA_def_struct_idprops_func(srna, "rna_Sequence_idprops");
+blender/makesrna/intern/rna_constraint.c:899:	RNA_def_struct_idprops_func(srna, "rna_PythonConstraint_idprops");
+blender/makesrna/intern/rna_nodetree.c:6889:	RNA_def_struct_idprops_func(srna, "rna_NodeSocket_idprops");
+blender/makesrna/intern/rna_nodetree.c:7013:	RNA_def_struct_idprops_func(srna, "rna_NodeSocketInterface_idprops");
+blender/makesrna/intern/rna_nodetree.c:7653:	RNA_def_struct_idprops_func(srna, "rna_Node_idprops");
+blender/makesrna/intern/rna_define.c:936:void RNA_def_struct_idprops_func(StructRNA *srna, const char *idproperties)
+blender/makesrna/intern/rna_ui.c:1041:	RNA_def_struct_idprops_func(srna, "rna_UIList_idprops");
+blender/makesrna/intern/rna_pose.c:795:	RNA_def_struct_idprops_func(srna, "rna_PoseBone_idprops");
+blender/makesrna/intern/rna_userdef.c:3262:	RNA_def_struct_idprops_func(srna, "rna_AddonPref_idprops");
+blender/makesrna/intern/rna_ID.c:796:	RNA_def_struct_idprops_func(srna, "rna_PropertyGroup_idprops");
+blender/makesrna/intern/rna_ID.c:933:	RNA_def_struct_idprops_func(srna, "rna_ID_idprops");
+blender/makesrna/intern/rna_armature.c:715:	RNA_def_struct_idprops_func(srna, "rna_Bone_idprops");
+blender/makesrna/intern/rna_armature.c:811:	RNA_def_struct_idprops_func(srna, "rna_EditBone_idprops");
+blender/makesrna/intern/rna_wm.c:1556:	RNA_def_struct_idprops_func(srna, "rna_OperatorProperties_idprops");
+blender/makesrna/RNA_define.h:62:void RNA_def_struct_idprops_func(StructRNA *srna, const char *refine);
+"""
