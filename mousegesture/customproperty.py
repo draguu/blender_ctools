@@ -37,7 +37,7 @@ class _CollectionOperator:
     登録しておく。
     """
 
-    class _OperatorCollection:
+    class _Operator:
         bl_description = ''
         bl_options = {'REGISTER', 'INTERNAL'}
 
@@ -65,7 +65,7 @@ class _CollectionOperator:
         def unregister(cls):
             cls._functions = None
 
-    class Add(_OperatorCollection, bpy.types.Operator):
+    class _Add(_Operator):
         """
         hoge = []
         def add_item(context):
@@ -85,7 +85,7 @@ class _CollectionOperator:
                 self._functions[self.function](context)
             return {'FINISHED'}
 
-    class Remove(_OperatorCollection, bpy.types.Operator):
+    class _Remove(_Operator):
         """
         hoge = []
         def remove_item(context, index):
@@ -107,7 +107,7 @@ class _CollectionOperator:
                 self._functions[self.function](context, self.index)
             return {'FINISHED'}
 
-    class Clear(_OperatorCollection, bpy.types.Operator):
+    class _Clear(_Operator):
         bl_idname = 'wm.collection_clear'
         bl_label = 'Collection Clear'
 
@@ -119,7 +119,7 @@ class _CollectionOperator:
                 self._functions[self.function](context)
             return {'FINISHED'}
 
-    class Move(_OperatorCollection, bpy.types.Operator):
+    class _Move(_Operator):
         bl_idname = 'wm.collection_move'
         bl_label = 'Collection Move'
 
@@ -135,12 +135,14 @@ class _CollectionOperator:
                                                self.index_to)
             return {'FINISHED'}
 
-    _classes = [
-        Add,
-        Remove,
-        Clear,
-        Move,
-    ]
+    class Add(_Add, bpy.types.Operator):
+        pass
+    class Remove(_Remove, bpy.types.Operator):
+        pass
+    class Clear(_Clear, bpy.types.Operator):
+        pass
+    class Move(_Move, bpy.types.Operator):
+        pass
 
     @classmethod
     def _to_bl_idname(cls, name):
@@ -161,21 +163,28 @@ class _CollectionOperator:
 
     @classmethod
     def register(cls):
-        for c in cls._classes:
+        for c in [cls.Add, cls.Remove, cls.Clear, cls.Move]:
             while hasattr(bpy.types, cls._to_bl_idname(c.bl_idname)):
                 c.bl_idname = cls._increment(c.bl_idname)
             bpy.utils.register_class(c)
 
     @classmethod
     def unregister(cls):
-        for c in cls._classes:
+        for c in [cls.Add, cls.Remove, cls.Clear, cls.Move]:
             bpy.utils.unregister_class(c)
 
     @classmethod
     def new_class(cls):
         """:rtype: CollectionOperator"""
+        name_space = {
+            'Add': type('Add', (cls._Add, bpy.types.Operator), {}),
+            'Remove': type('Remove', (cls._Remove, bpy.types.Operator), {}),
+            'Clear': type('Clear', (cls._Clear, bpy.types.Operator), {}),
+            'Move': type('Move', (cls._Move, bpy.types.Operator), {}),
+        }
         return type('CollectionOperator',
-                    (_CollectionOperator, bpy.types.PropertyGroup), {})
+                    (_CollectionOperator, bpy.types.PropertyGroup),
+                    name_space)
 
 
 class CollectionOperator(_CollectionOperator, bpy.types.PropertyGroup):
@@ -235,6 +244,80 @@ class _CustomProperty:
                     del self.key_object[key]
 
     _data = _Data()
+
+    class _Utils:
+        def __init__(self, custom_property_class):
+            self._cls = custom_property_class
+            """:type: _CustomProperty"""
+
+        def register_space_property(self, obj, attr, prop):
+            import inspect
+            if not inspect.isclass(obj):
+                raise ValueError()
+
+            cls = self._cls
+
+            cls.dynamic_property(obj, attr, prop)
+
+            idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
+
+            def saev_pre(scene):
+                for screen in bpy.data.screens:
+                    data = []
+                    for area in screen.areas:
+                        for space in area.spaces:
+                            if isinstance(space, obj):
+                                value = cls.prop_to_py(space, attr, True)
+                                if value is None:
+                                    value = {}
+                                data.append(value)
+                    screen[idprop_key] = data
+
+            saev_pre.key = idprop_key
+            cls.save_handler_add(saev_pre)
+
+            def load_post(scene):
+                custom_prop = cls.active()
+                for screen in bpy.data.screens:
+                    if idprop_key not in screen:
+                        continue
+
+                    data = screen[idprop_key]
+                    i = 0
+                    try:
+                        for area in screen.areas:
+                            for space in area.spaces:
+                                if isinstance(space, obj):
+                                    a = cls.attribute(space, attr, True)
+                                    custom_prop[a] = data[i]
+                                    i += 1
+                    except:
+                        import traceback
+                        traceback.print_exc()
+                    del screen[idprop_key]
+
+            load_post.key = idprop_key
+            cls.load_handler_add(load_post)
+
+        def unregister_space_property(self, obj, attr):
+            import inspect
+            if not inspect.isclass(obj):
+                raise ValueError()
+
+            cls = self._cls
+
+            idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
+
+            cls.dynamic_property_delete(obj, attr)
+
+            for func in cls._data.save_handlers:
+                if getattr(func, 'key', None) == idprop_key:
+                    cls.save_handler_remove(func)
+            for func in cls._data.load_handlers:
+                if getattr(func, 'key', None) == idprop_key:
+                    cls.load_handler_remove(func)
+
+    utils = _Utils(None)  # registerの時に初期化するからNoneは仮
 
     def _fget(self):
         return False
@@ -758,6 +841,7 @@ class _CustomProperty:
     @classmethod
     def register(cls):
         data = cls._data = cls._Data()
+        cls.utils = cls._Utils(cls)
 
         while hasattr(bpy.types.WindowManager, data.wm_attribute):
             data.wm_attribute = cls._increment(data.wm_attribute)
@@ -775,9 +859,14 @@ class _CustomProperty:
                 if hasattr(obj, attr):
                     delattr(obj, attr)
 
+        custom_prop = cls.active()
         for attr in data.attribute_property:
+            # delete custom property
             if hasattr(cls, attr):
                 delattr(cls, attr)
+            # delete ID Property
+            if attr in custom_prop:
+                del custom_prop[attr]
 
         delattr(bpy.types.WindowManager, data.wm_attribute)
 
@@ -790,74 +879,13 @@ class _CustomProperty:
                 bpy.app.handlers.load_post.remove(func)
 
         cls._data = cls._Data()
+        cls.utils = cls._Utils(cls)
 
     @classmethod
     def new_class(cls):
         """:rtype: CustomProperty"""
         return type('CustomProperty',
                     (_CustomProperty, bpy.types.PropertyGroup), {})
-
-    # Utils ---------------------------------------------------------
-    @classmethod
-    def register_space_property(cls, obj, attr, prop):
-        import inspect
-        if not inspect.isclass(obj):
-            raise ValueError()
-
-        cls.dynamic_property(obj, attr, prop)
-
-        idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
-
-        def saev_pre(scene):
-            for screen in bpy.data.screens:
-                data = []
-                for area in screen.areas:
-                    for space in area.spaces:
-                        if isinstance(space, obj):
-                            value = cls.prop_to_py(space, attr, True)
-                            if value is None:
-                                value = {}
-                            data.append(value)
-                screen[idprop_key] = data
-
-        saev_pre.key = idprop_key
-        cls.save_handler_add(saev_pre)
-
-        def load_post(scene):
-            custom_prop = cls.active()
-            for screen in bpy.data.screens:
-                if idprop_key not in screen:
-                    continue
-
-                data = screen[idprop_key]
-                i = 0
-                for area in screen.areas:
-                    for space in area.spaces:
-                        if isinstance(space, obj):
-                            a = cls.attribute(space, attr, True)
-                            custom_prop[a] = data[i]
-                            i += 1
-                del screen[idprop_key]
-
-        load_post.key = idprop_key
-        cls.load_handler_add(load_post)
-
-    @classmethod
-    def unregister_space_property(cls, obj, attr):
-        import inspect
-        if not inspect.isclass(obj):
-            raise ValueError()
-
-        idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
-
-        cls.dynamic_property_delete(obj, attr)
-
-        for func in cls._data.save_handlers:
-            if getattr(func, 'key', None) == idprop_key:
-                cls.save_handler_remove(func)
-        for func in cls._data.load_handlers:
-            if getattr(func, 'key', None) == idprop_key:
-                cls.load_handler_remove(func)
 
 
 class CustomProperty(_CustomProperty, bpy.types.PropertyGroup):
@@ -872,15 +900,9 @@ def test():
     """
 
     CP = CustomProperty.new_class()
-    # if hasattr(bpy.types, CustomProperty.__name__):
-    #     bpy.utils.unregister_class(
-    #         getattr(bpy.types, CustomProperty.__name__))
     bpy.utils.register_class(CP)
-
-    # if hasattr(bpy.types, CollectionOperator.__name__):
-    #     bpy.utils.unregister_class(
-    #         getattr(bpy.types, CollectionOperator.__name__))
-    bpy.utils.register_class(CollectionOperator)
+    OP = CollectionOperator.new_class()
+    bpy.utils.register_class(OP)
 
     class CustomItem:
         def __init__(self):
@@ -980,10 +1002,10 @@ def test():
             identifier = str(id(group)) + '_collection'
             def item_add_func(context, group=group):
                 group.item_list.append(CustomItem())
-            CollectionOperator.Add.register_function(
+            OP.Add.register_function(
                 identifier, item_add_func)
             # ボタン描画
-            op = layout.operator(CollectionOperator.Add.bl_idname, text='Add')
+            op = layout.operator(OP.Add.bl_idname, text='Add')
             op.function = identifier
 
             def draw_item(layout, obj):
@@ -1010,16 +1032,16 @@ def test():
                     item = group.item_list[index_from]
                     group.item_list[index_from: index_from + 1] = []
                     group.item_list.insert(index_to, item)
-                CollectionOperator.Move.register_function(
+                OP.Move.register_function(
                     identifier, item_move_func)
                 # Up
-                op = sub.operator(CollectionOperator.Move.bl_idname, text='',
+                op = sub.operator(OP.Move.bl_idname, text='',
                                   icon='TRIA_UP')
                 op.function = identifier
                 op.index_from = i
                 op.index_to = max(0, i - 1)
                 # Down
-                op = sub.operator(CollectionOperator.Move.bl_idname, text='',
+                op = sub.operator(OP.Move.bl_idname, text='',
                                   icon='TRIA_DOWN')
                 op.function = identifier
                 op.index_from = i
@@ -1029,10 +1051,10 @@ def test():
                 def item_remove_func(context, index, group=group):
                     group.item_list[index: index + 1] = []
 
-                CollectionOperator.Remove.register_function(
+                OP.Remove.register_function(
                     identifier, item_remove_func)
                 # Delete
-                op = sub.operator(CollectionOperator.Remove.bl_idname, text='',
+                op = sub.operator(OP.Remove.bl_idname, text='',
                                   icon='X')
                 op.function = identifier
                 op.index = i

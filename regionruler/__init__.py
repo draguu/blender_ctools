@@ -2824,13 +2824,13 @@ def register():
         bpy.utils.register_class(cls)
     auto_save_manager.register()
 
-    CustomProperty.register_space_property(
+    CustomProperty.utils.register_space_property(
         bpy.types.SpaceView3D, 'region_ruler',
         bpy.props.PointerProperty(type=RegionRuler_PG))
-    CustomProperty.register_space_property(
+    CustomProperty.utils.register_space_property(
         bpy.types.SpaceImageEditor, 'region_ruler',
         bpy.props.PointerProperty(type=RegionRuler_PG))
-    CustomProperty.register_space_property(
+    CustomProperty.utils.register_space_property(
         bpy.types.SpaceNodeEditor, 'region_ruler',
         bpy.props.PointerProperty(type=RegionRuler_PG))
 
@@ -2860,11 +2860,11 @@ def unregister():
     logger.debug('Unregister RegionRuler')
     draw_handler_remove()
 
-    CustomProperty.unregister_space_property(
+    CustomProperty.utils.unregister_space_property(
         bpy.types.SpaceView3D, 'region_ruler')
-    CustomProperty.unregister_space_property(
+    CustomProperty.utils.unregister_space_property(
         bpy.types.SpaceImageEditor, 'region_ruler')
-    CustomProperty.unregister_space_property(
+    CustomProperty.utils.unregister_space_property(
         bpy.types.SpaceNodeEditor, 'region_ruler')
 
     auto_save_manager.unregister()
