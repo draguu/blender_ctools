@@ -193,10 +193,15 @@ class CollectionOperator(_CollectionOperator, bpy.types.PropertyGroup):
 
 class _CustomProperty:
     class _Data:
+        class Prop:
+            def __init__(self, prop):
+                self.prop = prop
+                self.users = set()
+
         def __init__(self):
             self.wm_attribute = 'custom_property'
 
-            # {id(obj)/obj.as_pointer(): {attr: [prop, users], ...}, ...}
+            # {id(obj)/obj.as_pointer(): {attr: Prop, ...}, ...}
             self.custom_properties = {}
             self.dynamic_properties = {}  # property()用
             # {id(obj)/obj.as_pointer(): obj, ...}
@@ -229,9 +234,9 @@ class _CustomProperty:
             key, properties = self.key_props(obj, dynamic)
             ob_props = properties[key]
             if attr in ob_props:
-                ob_props[attr][1] = [prop]
+                ob_props[attr].prop = prop
             else:
-                ob_props[attr] = [prop, set()]
+                ob_props[attr] = self.Prop(prop)
             if dynamic:
                 self.key_object[key] = obj
 
@@ -246,13 +251,42 @@ class _CustomProperty:
     _data = _Data()
 
     class _Utils:
-        def __init__(self, custom_property_class):
-            self._cls = custom_property_class
+        def __get__(self, instance, owner):
+            self._cls = owner
+            return self
+
+        def __init__(self):
+            self._cls = None
             """:type: _CustomProperty"""
+
+        space_types = {
+            'EMPTY': bpy.types.Space,
+            'NONE': bpy.types.Space,
+            'CLIP_EDITOR': bpy.types.SpaceClipEditor,
+            'CONSOLE': bpy.types.SpaceConsole,
+            'DOPESHEET_EDITOR': bpy.types.SpaceDopeSheetEditor,
+            'FILE_BROWSER': bpy.types.SpaceFileBrowser,
+            'GRAPH_EDITOR': bpy.types.SpaceGraphEditor,
+            'IMAGE_EDITOR': bpy.types.SpaceImageEditor,
+            'INFO': bpy.types.SpaceInfo,
+            'LOGIC_EDITOR': bpy.types.SpaceLogicEditor,
+            'NLA_EDITOR': bpy.types.SpaceNLA,
+            'NODE_EDITOR': bpy.types.SpaceNodeEditor,
+            'OUTLINER': bpy.types.SpaceOutliner,
+            'PROPERTIES': bpy.types.SpaceProperties,
+            'SEQUENCE_EDITOR': bpy.types.SpaceSequenceEditor,
+            'TEXT_EDITOR': bpy.types.SpaceTextEditor,
+            'TIMELINE': bpy.types.SpaceTimeline,
+            'USER_PREFERENCES': bpy.types.SpaceUserPreferences,
+            'VIEW_3D': bpy.types.SpaceView3D,
+        }
 
         def register_space_property(self, obj, attr, prop):
             import inspect
             if not inspect.isclass(obj):
+                raise ValueError()
+
+            if obj not in self.space_types.values():
                 raise ValueError()
 
             cls = self._cls
@@ -304,6 +338,9 @@ class _CustomProperty:
             if not inspect.isclass(obj):
                 raise ValueError()
 
+            if obj not in self.space_types.values():
+                raise ValueError()
+
             cls = self._cls
 
             idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
@@ -317,7 +354,7 @@ class _CustomProperty:
                 if getattr(func, 'key', None) == idprop_key:
                     cls.load_handler_remove(func)
 
-    utils = _Utils(None)  # registerの時に初期化するからNoneは仮
+    utils = _Utils()  # registerの時に初期化するからNoneは仮
 
     def _fget(self):
         return False
@@ -399,6 +436,14 @@ class _CustomProperty:
 
     @classmethod
     def dynamic_property(cls, obj, attr, prop):
+        """プロパティを登録する
+        :param obj: クラス
+        :type obj: T
+        :param attr: 属性名の文字列
+        :type attr: str
+        :param prop: (bpy.props.BoolProperty, {'name': 'Test', ...})
+        :type prop: tuple
+        """
         import inspect
         if not inspect.isclass(obj):
             raise ValueError()
@@ -411,8 +456,8 @@ class _CustomProperty:
     def _property_delete(cls, obj, attr, dynamic):
         wm_custom_prop = cls.active()
         key, properties = cls._data.key_props(obj, dynamic)
-        _prop, users = properties[key][attr]
-        for wm_attr in users:
+        ob_prop = properties[key][attr]
+        for wm_attr in ob_prop.users:
             cls._data.temporary_data = wm_attr
             wm_custom_prop.attribute_delete_trigger = True
         cls._data.remove_property(obj, attr, dynamic)
@@ -450,7 +495,7 @@ class _CustomProperty:
         delattr(obj, attr)
 
     @classmethod
-    def _gen_dynamic_property_functions(cls, obj, prop):
+    def _gen_dynamic_property_functions(cls, obj, attr, wm_attr, prop):
         """objはインスタンス"""
         # get function ----------------------------------------------
         if 'get' in prop[1]:
@@ -481,7 +526,6 @@ class _CustomProperty:
     @classmethod
     def _gen_custom_property_functions(cls, obj, attr, wm_attr, prop):
         def get_value():
-            import traceback
             try:
                 if attr.startswith('['):
                     return eval('obj' + attr, {'obj': obj})
@@ -490,6 +534,7 @@ class _CustomProperty:
             except:
                 # クラスを登録していてインスタンスのみensureしている状態で
                 # コンソールで補完した時に警告がうるさいのでコメントアウト
+                # import traceback
                 # print("{} Error: {} '{}' '{}'".format(
                 #       cls.__name__, obj, attr, wm_attr))
                 # traceback.print_exc()
@@ -707,7 +752,8 @@ class _CustomProperty:
                         attr_prop[(attr, dynamic)] = [ob, ob_props]
 
         for (attr, dynamic), (ob, ob_props) in attr_prop.items():
-            prop, users = ob_props[attr]
+            ob_prop = ob_props[attr]
+            prop = ob_prop.prop
             wm_attr = cls.attribute(obj, attr, dynamic)
 
             # 変更が無ければ飛ばす
@@ -721,16 +767,16 @@ class _CustomProperty:
                     continue
 
                 # これを利用してるものを消す
-                for wm_attr_ in users:
+                for wm_attr_ in ob_prop.users:
                     if hasattr(cls, wm_attr_):
                         data.temporary_data = wm_attr_
                         wm_custom_prop.attribute_delete_trigger = True
                         del data.attribute_property[wm_attr_]
-                users.clear()
+                ob_prop.users.clear()
 
             if dynamic:
                 fget, fset, update = cls._gen_dynamic_property_functions(
-                    obj, prop)
+                    obj, attr, wm_attr, prop)
             else:
                 fget, fset, update = cls._gen_custom_property_functions(
                     obj, attr, wm_attr, prop)
@@ -747,7 +793,7 @@ class _CustomProperty:
             wm_custom_prop.attribute_set_trigger = True
 
             data.attribute_property[wm_attr] = [obj, attr, ob, prop]
-            ob_props[attr][1].add(wm_attr)
+            ob_props[attr].users.add(wm_attr)
             if attr in attr_mapping:
                 attr_mapping[attr] = (attr_mapping[attr], wm_attr)
             else:
@@ -841,7 +887,7 @@ class _CustomProperty:
     @classmethod
     def register(cls):
         data = cls._data = cls._Data()
-        cls.utils = cls._Utils(cls)
+        cls.utils = cls._Utils()
 
         while hasattr(bpy.types.WindowManager, data.wm_attribute):
             data.wm_attribute = cls._increment(data.wm_attribute)
@@ -879,7 +925,7 @@ class _CustomProperty:
                 bpy.app.handlers.load_post.remove(func)
 
         cls._data = cls._Data()
-        cls.utils = cls._Utils(cls)
+        cls.utils = cls._Utils()
 
     @classmethod
     def new_class(cls):

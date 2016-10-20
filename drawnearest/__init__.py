@@ -53,6 +53,7 @@ import blf
 
 try:
     importlib.reload(addongroup)
+    importlib.reload(customproperty)
     importlib.reload(structures)
     importlib.reload(utils)
     importlib.reload(registerinfo)
@@ -62,6 +63,7 @@ from .structures import *
 from . import addongroup
 from . import registerinfo
 from . import utils
+from . import customproperty
 
 
 # glVertexへ渡すZ値。
@@ -295,9 +297,7 @@ class VIEW3D_PG_DrawNearest(bpy.types.PropertyGroup):
         name='Enable', update=update)
 
 
-space_prop = utils.SpaceProperty(
-    [bpy.types.SpaceView3D, 'drawnearest',
-     VIEW3D_PG_DrawNearest])
+CustomProperty = customproperty.CustomProperty.new_class()
 
 
 ###############################################################################
@@ -1553,7 +1553,7 @@ def redraw_areas(context, force=False):
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
             v3d = area.spaces.active
-            prop = space_prop.get(v3d)
+            prop = v3d.drawnearest
             if force:
                 area.tag_redraw()
             elif prop.enable and v3d.viewport_shade != 'RENDERED':
@@ -1829,7 +1829,7 @@ def draw_callback(cls, context):
         # data['callback_count'][key] = -1
         return
 
-    prop = space_prop.get(v3d)
+    prop = v3d.drawnearest
     if (not prop.enable or context.mode != 'EDIT_MESH' or
             v3d.viewport_shade == 'RENDERED'):
         return
@@ -2219,7 +2219,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
-                p = space_prop.get(area.spaces.active)
+                p = area.spaces.active.drawnearest
                 if p.enable:
                     break
         else:  # 現在のwindowに描画対象が無いならスキップ
@@ -2367,7 +2367,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 continue
             space_data = sa.spaces.active
             """:type: bpy.types.SpaceView3D"""
-            prop = space_prop.get(space_data)
+            prop = space_data.drawnearest
             if (not prop.enable or
                     space_data.viewport_shade == 'RENDERED'):
                 continue
@@ -2464,7 +2464,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
         win = context.window
         v3d = context.space_data
-        prop = space_prop.get(v3d)
+        prop = v3d.drawnearest
         type = self.type
         if self.type == 'TOGGLE':
             if prop.enable:
@@ -2512,7 +2512,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 # Panel Draw Func / Callback / Register / Unregister
 ###############################################################################
 def menu_func(self, context):
-    prop = space_prop.get(context.space_data)
+    prop = context.space_data.drawnearest
     self.layout.separator()
     col = self.layout.column(align=True)
     """:type: bpy.types.UILayout"""
@@ -2562,7 +2562,7 @@ def scene_update_pre(scene):
     for area in win.screen.areas:
         if area.type == 'VIEW_3D':
             v3d = area.spaces.active
-            p = space_prop.get(v3d)
+            p = v3d.drawnearest
             if p.enable:
                 if not cls.active(win):
                     c = bpy.context.copy()
@@ -2591,6 +2591,7 @@ classes = [
     DrawNearestPreferences,
     VIEW3D_PG_DrawNearest,
     VIEW3D_OT_draw_nearest_element,
+    CustomProperty,
 ]
 
 
@@ -2598,7 +2599,12 @@ classes = [
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    space_prop.register()
+
+    CustomProperty.utils.register_space_property(
+        bpy.types.SpaceView3D, 'drawnearest',
+        bpy.props.PointerProperty(type=VIEW3D_PG_DrawNearest)
+    )
+
     auto_save_manager.register()
     bpy.types.VIEW3D_PT_view3d_meshdisplay.append(menu_func)
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
@@ -2611,7 +2617,10 @@ def unregister():
     bpy.app.handlers.load_pre.remove(load_pre)
     bpy.types.VIEW3D_PT_view3d_meshdisplay.remove(menu_func)
     auto_save_manager.unregister()
-    space_prop.unregister()
+
+    CustomProperty.utils.unregister_space_property(
+        bpy.types.SpaceView3D, 'drawnearest')
+
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
 

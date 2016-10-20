@@ -43,13 +43,13 @@ import bpy
 
 try:
     importlib.reload(addongroup)
+    importlib.reload(customproperty)
     importlib.reload(registerinfo)
     importlib.reload(structures)
-    importlib.reload(utils)
 except NameError:
     from . import addongroup
+    from . import customproperty
     from . import registerinfo
-    from . import utils
 from .structures import *
 
 
@@ -128,16 +128,14 @@ class VIEW3D_PG_QuadViewAspect(bpy.types.PropertyGroup):
     center = bpy.props.FloatVectorProperty(size=2)
 
 
-space_prop = utils.SpaceProperty(
-    [bpy.types.SpaceView3D, 'quadview_aspect',
-     VIEW3D_PG_QuadViewAspect])
+CustomProperty = customproperty.CustomProperty.new_class()
 
 
 def sync_quad(context, area):
     """source/blender/editors/screen/area.c: region_rect_recursive()辺りを参考
     """
     v3d = area.spaces.active
-    prop = space_prop.get(v3d)
+    prop = v3d.quadview_aspect
     if not prop.enable:
         return
     fx, fy = prop.center
@@ -237,7 +235,7 @@ class VIEW3D_OT_quadview_move(bpy.types.Operator):
 
     def modal(self, context, event):
         v3d = context.area.spaces.active
-        prop = space_prop.get(v3d)
+        prop = v3d.quadview_aspect
 
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             context.window.cursor_set('DEFAULT')
@@ -323,6 +321,7 @@ classes = [
     VIEW3D_OT_quadview_move,
     QuadViewMovePreferences,
     VIEW3D_PG_QuadViewAspect,
+    CustomProperty,
 ]
 
 
@@ -331,7 +330,9 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    space_prop.register()
+    CustomProperty.utils.register_space_property(
+        bpy.types.SpaceView3D, 'quadview_aspect',
+        bpy.props.PointerProperty(type=VIEW3D_PG_QuadViewAspect))
 
     bpy.app.handlers.scene_update_post.append(scene_update_func)
 
@@ -347,7 +348,8 @@ def register():
 def unregister():
     bpy.app.handlers.scene_update_post.remove(scene_update_func)
 
-    space_prop.unregister()
+    CustomProperty.utils.unregister_space_property(
+        bpy.types.SpaceView3D, 'quadview_aspect')
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)

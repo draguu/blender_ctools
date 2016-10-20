@@ -47,23 +47,12 @@ import bpy
 
 try:
     importlib.reload(addongroup)
+    importlib.reload(customproperty)
     importlib.reload(registerinfo)
-    importlib.reload(utils)
 except NameError:
     from . import addongroup
+    from . import customproperty
     from . import registerinfo
-    from . import utils
-
-
-space_prop = utils.SpaceProperty(
-    [bpy.types.SpaceView3D,
-     'lock_cursor_location',
-     bpy.props.BoolProperty(
-         name='Lock Cursor Location',
-         description='3D Cursor location is locked to prevent it from being '
-                     'accidentally moved')
-     ]
-)
 
 
 class LockCursorPreferences(
@@ -111,6 +100,9 @@ class VIEW3D_OT_cursor3d_restrict(bpy.types.Operator):
         return bpy.ops.view3d.cursor3d(context.copy(), 'INVOKE_DEFAULT')
 
 
+CustomProperty = customproperty.CustomProperty.new_class()
+
+
 draw_func_bak = None
 
 
@@ -120,7 +112,12 @@ def panel_draw_set():
     def draw(self, context):
         layout = self.layout
         view = context.space_data
-        layout.prop(space_prop.get(view), 'lock_cursor_location')
+
+        custom_prop = CustomProperty.active()
+        attrs = custom_prop.ensure(view, 'lock_cursor_location')
+        attr = attrs['lock_cursor_location']
+        layout.prop(custom_prop, attr)
+
         col = layout.column()
         col.active = not view.lock_cursor_location
         col.prop(view, 'cursor_location', text='Location')
@@ -158,11 +155,11 @@ def panel_draw_restore():
 
 disabled_keymap_items = []
 
-
 classes = [
     LockCursorPreferences,
     VIEW3D_OT_cursor3d_override,
     VIEW3D_OT_cursor3d_restrict,
+    CustomProperty,
 ]
 
 
@@ -174,7 +171,14 @@ def register():
     NOTE: 特定Areaを最大化すると一時的なScreenが生成されるので
     lock_cursor_location属性はScreenでは不適。WindowManagerを使う。
     """
-    space_prop.register()
+
+    CustomProperty.utils.register_space_property(
+        bpy.types.SpaceView3D, 'lock_cursor_location',
+        bpy.props.BoolProperty(
+            name='Lock Cursor Location',
+            description='3D Cursor location is locked to prevent it from being '
+                        'accidentally moved')
+    )
 
     panel_draw_set()
 
@@ -192,7 +196,9 @@ def register():
 def unregister():
     panel_draw_restore()
 
-    space_prop.unregister()
+    CustomProperty.utils.unregister_space_property(
+        bpy.types.SpaceView3D, 'lock_cursor_location',
+    )
 
     wm = bpy.context.window_manager
     for kc_name, km_name, kmi_id in disabled_keymap_items:
