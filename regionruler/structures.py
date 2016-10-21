@@ -1963,6 +1963,69 @@ def RNA_property_float_set_array(ptr, prop, values):
     fprop.setarray(ptr, cast(values, POINTER(c_float)))
 
 
+###############################################################################
+# StructRNA
+###############################################################################
+class ContainerRNA(Structure):
+    """rna_internal_types.h"""
+    _fields_ = fields(
+        c_void_p, 'next', 'prev',
+        c_void_p, 'prophash',  # struct GHash *prophash
+        ListBase, 'properties',
+    )
+
+
+RNA_MAX_ARRAY_DIMENSION = 3
+
+
+class StructRNA(Structure):
+    """rna_internal_types.h
+
+    bl_rna = bpy.types.VIEW3D_OT_cursor3d.bl_ran
+    addr = bl_rna.as_pointer()
+    srna = ct.cast(addr, ct.POINTER(structures.StructRNA)).contents
+    """
+
+StructRNA._fields_ = fields(
+    ContainerRNA, 'cont',
+
+    c_char_p, 'identifier',
+
+    c_void_p, 'py_type',
+    c_void_p, 'blender_type',
+
+    c_int, 'flag',
+
+    c_char_p, 'name',
+    c_char_p, 'description',
+    c_char_p, 'translation_context',
+    c_int, 'icon',
+
+    PropertyRNA, '*nameproperty',
+
+    PropertyRNA, '*iteratorproperty',
+
+    StructRNA, '*base',
+
+    StructRNA, '*nested',
+
+    c_void_p, 'refine',
+
+    c_void_p, 'path',
+
+    c_void_p, 'reg',  # StructRegisterFunc
+    c_void_p, 'unreg',  # StructUnregisterFunc
+    c_void_p, 'instance',  # StructInstanceFunc
+
+    c_void_p, 'idproperties',  # IDPropertiesFunc
+
+    ListBase, 'functions',
+)
+
+
+###############################################################################
+#
+###############################################################################
 def image_pixels_get(image):
     """Image.pixelsをnumpy.ndarrayとして返す。
     :type image: bpy.types.Image

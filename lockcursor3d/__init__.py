@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Lock 3D Cursor',
     'author': 'chromoly',
-    'version': (0, 3, 2),
+    'version': (0, 3, 3),
     'blender': (2, 78, 0),
     'location': '3D View',
     'description': 'commit a791153: 3D Cursor: Add option to lock it in place '
@@ -41,6 +41,7 @@ commit a791153ca5e6f87d50396e188a3664b579884161
 """
 
 
+import ctypes as ct
 import importlib
 
 import bpy
@@ -49,10 +50,12 @@ try:
     importlib.reload(addongroup)
     importlib.reload(customproperty)
     importlib.reload(registerinfo)
+    importlib.reload(structures)
 except NameError:
     from . import addongroup
     from . import customproperty
     from . import registerinfo
+    from . import structures
 
 
 class LockCursorPreferences(
@@ -63,41 +66,27 @@ class LockCursorPreferences(
     bl_idname = __name__
 
 
-class VIEW3D_OT_cursor3d_override(bpy.types.Operator):
-    bl_idname = 'view3d.cursor3d_override'
-    bl_label = 'Override 3D Cursor Operator'
-    bl_options = {'INTERNAL'}
-
-    @classmethod
-    def poll(cls, context):
-        return bpy.ops.view3d.cursor3d.poll()
-
-    def invoke(self, context, event):
-        kc = bpy.context.window_manager.keyconfigs.active
-        km = kc.keymaps.get('3D View')
-        if km:
-            for kmi in km.keymap_items:
-                if kmi.idname == 'view3d.cursor3d':
-                    kmi.idname = 'view3d.cursor3d_restrict'
-                    disabled_keymap_items.append((kc.name, km.name, kmi.id))
-
-        return {'PASS_THROUGH'}
-
-
-class VIEW3D_OT_cursor3d_restrict(bpy.types.Operator):
-    bl_idname = 'view3d.cursor3d_restrict'
+class VIEW3D_OT_cursor3d(bpy.types.Operator):
+    bl_idname = 'view3d.cursor3d'
     bl_label = 'Set 3D Cursor'
-    bl_options = set()
+    bl_options = {'REGISTER'}
+
+    operator_type = None
 
     @classmethod
     def poll(cls, context):
-        if bpy.ops.view3d.cursor3d.poll():
-            if not context.space_data.lock_cursor_location:
-                return True
-        return False
+        func_type = ct.CFUNCTYPE(ct.c_bool, ct.c_void_p)
+        func = ct.cast(cls.operator_type.poll, func_type)
+        r = func(context.as_pointer())
+        return r and not context.space_data.lock_cursor_location
 
     def invoke(self, context, event):
-        return bpy.ops.view3d.cursor3d(context.copy(), 'INVOKE_DEFAULT')
+        ot = self.__class__.operator_type
+        func_type = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_void_p,
+                                 ct.c_void_p)
+        func = ct.cast(ot.invoke, func_type)
+        func(context.as_pointer(), None, event.as_pointer())
+        return {'FINISHED'}
 
 
 CustomProperty = customproperty.CustomProperty.new_class()
@@ -153,43 +142,34 @@ def panel_draw_restore():
         cls.draw = draw_func_bak
 
 
-disabled_keymap_items = []
-
 classes = [
     LockCursorPreferences,
-    VIEW3D_OT_cursor3d_override,
-    VIEW3D_OT_cursor3d_restrict,
+    VIEW3D_OT_cursor3d,
     CustomProperty,
 ]
 
 
 @LockCursorPreferences.module_register
 def register():
+    pyop = bpy.ops.view3d.cursor3d
+    opinst = pyop.get_instance()
+    pyrna = ct.cast(id(opinst), ct.POINTER(structures.BPy_StructRNA)).contents
+    op = ct.cast(pyrna.ptr.data,
+                 ct.POINTER(structures.wmOperator)).contents
+    VIEW3D_OT_cursor3d.operator_type = op.type.contents
+
     for cls in classes:
         bpy.utils.register_class(cls)
-    """
-    NOTE: 特定Areaを最大化すると一時的なScreenが生成されるので
-    lock_cursor_location属性はScreenでは不適。WindowManagerを使う。
-    """
 
     CustomProperty.utils.register_space_property(
         bpy.types.SpaceView3D, 'lock_cursor_location',
         bpy.props.BoolProperty(
             name='Lock Cursor Location',
-            description='3D Cursor location is locked to prevent it from being '
-                        'accidentally moved')
+            description='3D Cursor location is locked to prevent it from '
+                        'being accidentally moved')
     )
 
     panel_draw_set()
-
-    wm = bpy.context.window_manager
-    kc = wm.keyconfigs.addon
-    if kc:
-        km = LockCursorPreferences.get_keymap('3D View')
-        kmi = km.keymap_items.new(
-            'view3d.cursor3d_override', 'ACTIONMOUSE', 'PRESS',
-            head=True
-        )
 
 
 @LockCursorPreferences.module_unregister
@@ -199,20 +179,6 @@ def unregister():
     CustomProperty.utils.unregister_space_property(
         bpy.types.SpaceView3D, 'lock_cursor_location',
     )
-
-    wm = bpy.context.window_manager
-    for kc_name, km_name, kmi_id in disabled_keymap_items:
-        kc = wm.keyconfigs.get(kc_name)
-        if not kc:
-            continue
-        km = kc.keymaps.get(km_name)
-        if not km:
-            continue
-        for kmi in km.keymap_items:
-            if kmi.id == kmi_id:
-                kmi.idname = 'view3d.cursor3d'
-                break
-    disabled_keymap_items.clear()
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
