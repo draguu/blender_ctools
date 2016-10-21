@@ -213,9 +213,6 @@ class _CustomProperty:
 
             self.temporary_data = None
 
-            self.save_handlers = []
-            self.load_handlers = []
-
         def key_props(self, obj, dynamic, create=True):
             """obj用のキーとその辞書を返す"""
             if dynamic:
@@ -281,6 +278,9 @@ class _CustomProperty:
             'VIEW_3D': bpy.types.SpaceView3D,
         }
 
+        def _space_porperty_id_prop_key(self, obj, attr):
+            return 'space_property_{}_{}'.format(obj.__name__, attr)
+
         def register_space_property(self, obj, attr, prop):
             import inspect
             if not inspect.isclass(obj):
@@ -293,8 +293,9 @@ class _CustomProperty:
 
             cls.dynamic_property(obj, attr, prop)
 
-            idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
+            idprop_key = self._space_porperty_id_prop_key(obj, attr)
 
+            @bpy.app.handlers.persistent
             def saev_pre(scene):
                 for screen in bpy.data.screens:
                     data = []
@@ -308,8 +309,9 @@ class _CustomProperty:
                     screen[idprop_key] = data
 
             saev_pre.key = idprop_key
-            cls.save_handler_add(saev_pre)
+            bpy.app.handlers.save_pre.append(saev_pre)
 
+            @bpy.app.handlers.persistent
             def load_post(scene):
                 custom_prop = cls.active()
                 for screen in bpy.data.screens:
@@ -331,7 +333,7 @@ class _CustomProperty:
                     del screen[idprop_key]
 
             load_post.key = idprop_key
-            cls.load_handler_add(load_post)
+            bpy.app.handlers.load_post.append(load_post)
 
         def unregister_space_property(self, obj, attr):
             import inspect
@@ -343,16 +345,16 @@ class _CustomProperty:
 
             cls = self._cls
 
-            idprop_key = 'space_property_{}_{}'.format(obj.__name__, attr)
+            idprop_key = self._space_porperty_id_prop_key(obj, attr)
 
             cls.dynamic_property_delete(obj, attr)
 
-            for func in cls._data.save_handlers:
+            for func in bpy.app.handlers.save_pre:
                 if getattr(func, 'key', None) == idprop_key:
-                    cls.save_handler_remove(func)
-            for func in cls._data.load_handlers:
+                    bpy.app.handlers.save_pre.remove(func)
+            for func in bpy.app.handlers.load_post:
                 if getattr(func, 'key', None) == idprop_key:
-                    cls.load_handler_remove(func)
+                    bpy.app.handlers.load_post.remove(func)
 
     utils = _Utils()  # registerの時に初期化するからNoneは仮
 
@@ -381,6 +383,9 @@ class _CustomProperty:
 
     attribute_delete_trigger = bpy.props.BoolProperty(get=_fget, set=_fset)
     del _fget, _fset
+
+    # # bpy.app.handlers.persistentで関数に追加される属性。値はNone。
+    # PERMINENT_CB_ID = '_bpy_persistent'
 
     @classmethod
     def active(cls):
@@ -802,38 +807,6 @@ class _CustomProperty:
         return attr_mapping
 
     @classmethod
-    def save_handler_add(cls, func, persistent=True):
-        PERMINENT_CB_ID = '_bpy_persistent'
-        if persistent:
-            func = bpy.app.handlers.persistent(func)
-        else:
-            if hasattr(func, PERMINENT_CB_ID):
-                delattr(func, PERMINENT_CB_ID)
-        bpy.app.handlers.save_pre.append(func)
-        cls._data.save_handlers.append(func)
-
-    @classmethod
-    def save_handler_remove(cls, func):
-        bpy.app.handlers.save_pre.remove(func)
-        cls._data.save_handlers.remove(func)
-
-    @classmethod
-    def load_handler_add(cls, func, persistent=True):
-        PERMINENT_CB_ID = '_bpy_persistent'
-        if persistent:
-            func = bpy.app.handlers.persistent(func)
-        else:
-            if hasattr(func, PERMINENT_CB_ID):
-                delattr(func, PERMINENT_CB_ID)
-        bpy.app.handlers.load_post.append(func)
-        cls._data.load_handlers.append(func)
-
-    @classmethod
-    def load_handler_remove(cls, func):
-        bpy.app.handlers.load_post.remove(func)
-        cls._data.load_handlers.remove(func)
-
-    @classmethod
     def _increment(cls, name):
         import re
         m = re.match('(.*?)(\d*)$', name)
@@ -915,14 +888,6 @@ class _CustomProperty:
                 del custom_prop[attr]
 
         delattr(bpy.types.WindowManager, data.wm_attribute)
-
-        # save/load handlersの消し忘れを取り除く
-        for func in data.save_handlers:
-            if func in bpy.app.handlers.save_pre:
-                bpy.app.handlers.save_pre.remove(func)
-        for func in data.load_handlers:
-            if func in bpy.app.handlers.load_post:
-                bpy.app.handlers.load_post.remove(func)
 
         cls._data = cls._Data()
         cls.utils = cls._Utils()
