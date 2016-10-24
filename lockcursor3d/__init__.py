@@ -562,13 +562,18 @@ def panel_draw_set():
         custom_prop = CustomProperty.active()
         attrs = custom_prop.ensure(view, 'lock_cursor_location',
                                    'snap_cursor_to_grid')
+        row = layout.row()
+        sp = row.split()
         attr = attrs['lock_cursor_location']
-        layout.prop(custom_prop, attr, text='Lock')
+        sub = sp.row()
+        sub.prop(custom_prop, attr, text='Lock')
+        sub = sp.row()
+        sub.active = not view.lock_cursor_location
+        attr = attrs['snap_cursor_to_grid']
+        sub.prop(custom_prop, attr, text='Snap')
 
         col = layout.column()
         col.active = not view.lock_cursor_location
-        attr = attrs['snap_cursor_to_grid']
-        col.prop(custom_prop, attr, text='Snap to Grid')
         col.prop(view, 'cursor_location', text='Location')
 
     draw_func_bak = None
