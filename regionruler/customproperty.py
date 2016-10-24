@@ -299,14 +299,18 @@ class _CustomProperty:
             def saev_pre(scene):
                 for screen in bpy.data.screens:
                     data = []
+                    data_used = []
                     for area in screen.areas:
                         for space in area.spaces:
                             if isinstance(space, obj):
                                 value = cls.prop_to_py(space, attr, True)
                                 if value is None:
-                                    value = {}
-                                data.append(value)
+                                    data_used.append(False)
+                                else:
+                                    data.append(value)
+                                    data_used.append(True)
                     screen[idprop_key] = data
+                    screen['_' + idprop_key] = data_used
 
             saev_pre.key = idprop_key
             bpy.app.handlers.save_pre.append(saev_pre)
@@ -315,17 +319,21 @@ class _CustomProperty:
             def load_post(scene):
                 custom_prop = cls.active()
                 for screen in bpy.data.screens:
-                    if idprop_key not in screen:
+                    if (idprop_key not in screen or
+                            '_' + idprop_key not in screen):
                         continue
 
                     data = screen[idprop_key]
-                    i = 0
+                    data_used = screen['_' + idprop_key]
+                    i = j = 0
                     try:
                         for area in screen.areas:
                             for space in area.spaces:
                                 if isinstance(space, obj):
                                     a = cls.attribute(space, attr, True)
-                                    custom_prop[a] = data[i]
+                                    if data_used[i]:
+                                        custom_prop[a] = data[j]
+                                        j += 1
                                     i += 1
                     except:
                         import traceback
