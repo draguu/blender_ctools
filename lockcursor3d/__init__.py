@@ -351,8 +351,7 @@ class VIEW3D_OT_cursor3d(bpy.types.Operator):
         snap = 'ON' if self.use_snap else 'OFF'
         precision = 'ON' if self.use_precision else 'OFF'
         depth = 'ON' if self.use_depth else 'OFF'
-        text = 'Confirm: (Space/Return/Enter), ' \
-               'Snap: {}(Ctrl), Precision: {}(Shift), Depth: {}(Alt)'
+        text = 'Snap: {}(Ctrl), Precision: {}(Shift), Depth: {}(Alt)'
         text += ', Snap Selected: (S), Snap Active: (A)'
         if context.mode in {'OBJECT', 'EDIT_MESH'}:
             text += ', Snap Circle: (C)'
@@ -379,7 +378,8 @@ class VIEW3D_OT_cursor3d(bpy.types.Operator):
             self.exit(context)
             return {'FINISHED'}
 
-        if event.type in {'RIGHTMOUSE', 'SPACE', 'RET', 'NUMPAD_ENTER', 'ESC'}:
+        if event.type in {'LEFTMOUSE', 'RIGHTMOUSE', 'SPACE', 'RET',
+                          'NUMPAD_ENTER', 'ESC'}:
             if event.value == 'PRESS':
                 self.exit(context)
                 return {'FINISHED'}
