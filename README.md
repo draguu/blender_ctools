@@ -63,11 +63,12 @@
 ※ [Pillow](https://python-pillow.org)のインストールが必要。  
 ![Image](images/uvgrid.jpg)
 
-
 ## Region Panel Categories
 アクティブなタブの取得と切り替えの為、bpy.types.Regionにpanel_categoriesとactive_panel_category属性を追加する。  
 linuxでのみ動作する。
 
+## File Browser Confirm
+画像を上書きする時にダイアログを表示する。
 
 ## その他
 ### patch/ui_layout_box.patch

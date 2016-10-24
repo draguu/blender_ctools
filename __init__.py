@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'CTools',
     'author': 'chromoly',
-    'version': (1, 6),
+    'version': (1, 7),
     'blender': (2, 78, 0),
     'location': '',
     'description': 'Collection of add-ons',
@@ -78,6 +78,7 @@ class CToolsPreferences(addongroup.AddonGroupPreferences,
         'emulatenumpad',
         'uvgrid',
         'panelcategories',
+        'filebrowserconfirm',
     ]
 
 
