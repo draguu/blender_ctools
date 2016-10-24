@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'File Browser Confirm',
     'author': 'chromoly',
-    'version': (0, 0, 1),
+    'version': (0, 1, 0),
     'blender': (2, 78, 0),
     'location': 'File Browser',
     'description': '',
@@ -54,6 +54,17 @@ SAVE_LABEL = 'Overwrite'
 LOAD_LABEL = 'Load'
 
 
+translation_dict = {
+    'ja_JP': {
+        ('Operator', 'Overwrite'): '上書き保存',
+        ('*', 'Overwrite existing file'): '上書き保存',
+        ('*', 'separator: ","\ne.g. "image.save_as, wm.save_as_mainfile"'):
+            'オペレーターを "," で区切って記述します\n'
+            '例: "image.save_as, wm.save_as_mainfile"',
+    }
+}
+
+
 class SaveConfirmPreferences(
         addongroup.AddonGroupPreferences,
         registerinfo.AddonRegisterInfo,
@@ -61,30 +72,30 @@ class SaveConfirmPreferences(
         bpy.types.AddonPreferences):
     bl_idname = __name__
 
-    # 警告メッセージの違いだけ
     save_operators = bpy.props.StringProperty(
         name='Save',
         description='separator: ","\n'
                     'e.g. "image.save_as, wm.save_as_mainfile"',
         default='image.save_as',
     )
-    load_operators = bpy.props.StringProperty(
-        name='Load',
-        description='separator: ","\n'
-                    'e.g. "image.open, wm.open_mainfile"',
-        default='',
-    )
+    # load_operators = bpy.props.StringProperty(
+    #     name='Load',
+    #     description='separator: ","\n'
+    #                 'e.g. "image.open, wm.open_mainfile"',
+    #     default='',
+    # )
 
     def draw(self, context):
         layout = self.layout
         column = layout.column()
         sp = column.split(0.15)
         col = sp.column()
-        col.label('Save:')
-        col.label('Load:')
+        text = bpy.app.translations.pgettext_iface('Operator') + ':'
+        col.label(text)
+        # col.label('Load:')
         col = sp.column()
         col.prop(self, 'save_operators', text='')
-        col.prop(self, 'load_operators', text='')
+        # col.prop(self, 'load_operators', text='')
 
         self.layout.separator()
         super().draw(context)
@@ -163,19 +174,25 @@ class FILE_OT_execute(bpy.types.Operator):
         # save用
         bl_idnames = self.to_bl_idnames(prefs.save_operators)
         if op and op.bl_idname in bl_idnames:
-            path = op.filepath
-            if path.startswith('//') and bpy.data.filepath:
-                blend_dir = os.path.dirname(bpy.data.filepath)
-                path = os.path.normpath(os.path.join(blend_dir, path[2:]))
+            if 0:
+                # 起動直後にディレクトに変更を加えず保存する場合は
+                # op.filepathがファイル名のみでディレクトリ情報を含んでいない
+                path = op.filepath
+                if path.startswith('//') and bpy.data.filepath:
+                    blend_dir = os.path.dirname(bpy.data.filepath)
+                    path = os.path.normpath(os.path.join(blend_dir, path[2:]))
+            else:
+                path = os.path.join(space_file.params.directory,
+                                    space_file.params.filename)
             if os.path.exists(path):
                 return bpy.ops.file.execute_confirm_save(
                     'INVOKE_DEFAULT', self.need_active)
-        else:
-            # load用
-            bl_idnames = self.to_bl_idnames(prefs.load_operators)
-            if op and op.bl_idname in bl_idnames:
-                return bpy.ops.file.execute_confirm_load(
-                    'INVOKE_DEFAULT', self.need_active)
+        # else:
+        #     # load用
+        #     bl_idnames = self.to_bl_idnames(prefs.load_operators)
+        #     if op and op.bl_idname in bl_idnames:
+        #         return bpy.ops.file.execute_confirm_load(
+        #             'INVOKE_DEFAULT', self.need_active)
 
         return self.call_internal(context)
 
@@ -213,18 +230,18 @@ class FILE_OT_execute_confirm_save(FILE_OT_execute_confirm,
     bl_description = 'Overwrite existing file'
 
 
-class FILE_OT_execute_confirm_load(FILE_OT_execute_confirm,
-                                   bpy.types.Operator):
-    bl_idname = 'file.execute_confirm_load'
-    bl_label = LOAD_LABEL
-    bl_description = ''
+# class FILE_OT_execute_confirm_load(FILE_OT_execute_confirm,
+#                                    bpy.types.Operator):
+#     bl_idname = 'file.execute_confirm_load'
+#     bl_label = LOAD_LABEL
+#     bl_description = ''
 
 
 classes = [
     SaveConfirmPreferences,
     FILE_OT_execute,
     FILE_OT_execute_confirm_save,
-    FILE_OT_execute_confirm_load,
+    # FILE_OT_execute_confirm_load,
 ]
 
 
@@ -240,12 +257,14 @@ def register():
 
     for cls in classes:
         bpy.utils.register_class(cls)
+    bpy.app.translations.register(__name__, translation_dict)
 
 
 @SaveConfirmPreferences.module_unregister
 def unregister():
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
+    bpy.app.translations.unregister(__name__)
 
 
 if __name__ == '__main__':
