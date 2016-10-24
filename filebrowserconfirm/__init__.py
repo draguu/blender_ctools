@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'File Browser Confirm',
     'author': 'chromoly',
-    'version': (0, 1, 0),
+    'version': (0, 1, 1),
     'blender': (2, 78, 0),
     'location': 'File Browser',
     'description': '',
@@ -50,10 +50,6 @@ except NameError:
     from . import structures
 
 
-SAVE_LABEL = 'Overwrite'
-LOAD_LABEL = 'Load'
-
-
 translation_dict = {
     'ja_JP': {
         ('Operator', 'Overwrite'): '上書き保存',
@@ -78,12 +74,6 @@ class SaveConfirmPreferences(
                     'e.g. "image.save_as, wm.save_as_mainfile"',
         default='image.save_as',
     )
-    # load_operators = bpy.props.StringProperty(
-    #     name='Load',
-    #     description='separator: ","\n'
-    #                 'e.g. "image.open, wm.open_mainfile"',
-    #     default='',
-    # )
 
     def draw(self, context):
         layout = self.layout
@@ -92,13 +82,12 @@ class SaveConfirmPreferences(
         col = sp.column()
         text = bpy.app.translations.pgettext_iface('Operator') + ':'
         col.label(text)
-        # col.label('Load:')
         col = sp.column()
         col.prop(self, 'save_operators', text='')
-        # col.prop(self, 'load_operators', text='')
 
         self.layout.separator()
         super().draw(context)
+
 
 OPERATOR_RUNNING_MODAL = (1 << 0)
 OPERATOR_CANCELLED = (1 << 1)
@@ -166,6 +155,9 @@ class FILE_OT_execute(bpy.types.Operator):
                 bl_idnames.append(name)
         return bl_idnames
 
+    # NODE: FileBrowserでボタンを押した場合はexecuteが、
+    #       Enterキーを押した場合はinvokeが呼ばれる。
+
     def execute(self, context):
         prefs = SaveConfirmPreferences.get_instance()
         space_file = context.space_data
@@ -185,26 +177,16 @@ class FILE_OT_execute(bpy.types.Operator):
                 path = os.path.join(space_file.params.directory,
                                     space_file.params.filename)
             if os.path.exists(path):
-                return bpy.ops.file.execute_confirm_save(
-                    'INVOKE_DEFAULT', self.need_active)
-        # else:
-        #     # load用
-        #     bl_idnames = self.to_bl_idnames(prefs.load_operators)
-        #     if op and op.bl_idname in bl_idnames:
-        #         return bpy.ops.file.execute_confirm_load(
-        #             'INVOKE_DEFAULT', self.need_active)
+                return bpy.ops.file.execute_overwrite_confirm(
+                    'INVOKE_DEFAULT', need_active=self.need_active)
 
         return self.call_internal(context)
 
-    # NODE: FileBrowserでボタンを押した場合はexecuteが、
-    #       Enterキーを押した場合はinvokeが呼ばれる。
 
-    # def invoke(self, context, event):
-    #     wm = context.window_manager
-    #     return wm.invoke_confirm(self, event)
-
-
-class FILE_OT_execute_confirm:
+class FILE_OT_execute_overwrite_confirm(bpy.types.Operator):
+    bl_idname = 'file.execute_overwrite_confirm'
+    bl_label = 'Overwrite'
+    bl_description = 'Overwrite existing file'
     bl_options = {'REGISTER', 'INTERNAL'}
 
     need_active = bpy.props.BoolProperty(
@@ -223,25 +205,10 @@ class FILE_OT_execute_confirm:
         return wm.invoke_confirm(self, event)
 
 
-class FILE_OT_execute_confirm_save(FILE_OT_execute_confirm,
-                                   bpy.types.Operator):
-    bl_idname = 'file.execute_confirm_save'
-    bl_label = SAVE_LABEL
-    bl_description = 'Overwrite existing file'
-
-
-# class FILE_OT_execute_confirm_load(FILE_OT_execute_confirm,
-#                                    bpy.types.Operator):
-#     bl_idname = 'file.execute_confirm_load'
-#     bl_label = LOAD_LABEL
-#     bl_description = ''
-
-
 classes = [
     SaveConfirmPreferences,
     FILE_OT_execute,
-    FILE_OT_execute_confirm_save,
-    # FILE_OT_execute_confirm_load,
+    FILE_OT_execute_overwrite_confirm,
 ]
 
 
