@@ -120,15 +120,11 @@ class FILE_OT_execute(bpy.types.Operator):
     def poll(cls, context):
         if cls.operator_type is None:
             return False
-        func_type = ct.CFUNCTYPE(ct.c_bool, ct.c_void_p)
-        func = ct.cast(cls.operator_type.poll, func_type)
-        return func(context.as_pointer())
+        return cls.operator_type.poll(context.as_pointer())
 
     def call_internal(self, context):
-        ot = FILE_OT_execute.operator_type
-        func_type = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_void_p)
-        func = ct.cast(ot.exec, func_type)
-        result = func(context.as_pointer(), self.as_pointer())
+        result = FILE_OT_execute.operator_type.exec(
+            context.as_pointer(), self.as_pointer())
 
         r = set()
         return_flags = {

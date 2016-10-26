@@ -37,7 +37,7 @@
 
 import ctypes
 from ctypes import CDLL, Structure, Union, POINTER, addressof, cast, \
-    c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
+    c_bool, c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
     py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE, byref, \
     sizeof, c_ubyte, cdll
 from ctypes.util import find_library
@@ -877,15 +877,22 @@ class wmOperatorType(Structure):
         c_char_p, 'translation_context',
         c_char_p, 'description',
 
-        c_void_p, 'exec',
-        c_void_p, 'check',
-        c_void_p, 'invoke',
-        c_void_p, 'cancel',
-        c_void_p, 'modal',
+        # int (*exec)(struct bContext *, struct wmOperator *) ATTR_WARN_UNUSED_RESULT;
+        CFUNCTYPE(c_int, c_void_p, c_void_p), 'exec',
+        # bool (*check)(struct bContext *, struct wmOperator *);
+        CFUNCTYPE(c_bool, c_void_p, c_void_p), 'check',
+        # int (*invoke)(struct bContext *, struct wmOperator *, const struct wmEvent *) ATTR_WARN_UNUSED_RESULT;
+        CFUNCTYPE(c_int, c_void_p, c_void_p, c_void_p), 'invoke',
+        # void (*cancel)(struct bContext *, struct wmOperator *);
+        CFUNCTYPE(c_int, c_void_p, c_void_p), 'cancel',
+        # int (*modal)(struct bContext *, struct wmOperator *, const struct wmEvent *) ATTR_WARN_UNUSED_RESULT;
+        CFUNCTYPE(c_int, c_void_p, c_void_p, c_void_p), 'modal',
 
-        c_void_p, 'poll',
+        # int (*poll)(struct bContext *) ATTR_WARN_UNUSED_RESULT;
+        CFUNCTYPE(c_int, c_void_p), 'poll',
 
-        c_void_p, 'ui',
+        # void (*ui)(struct bContext *, struct wmOperator *);
+        CFUNCTYPE(c_int, c_void_p, c_void_p), 'ui',
 
         c_void_p, 'srna',  # <StructRNA>
 
@@ -897,7 +904,8 @@ class wmOperatorType(Structure):
 
         c_void_p, 'modalkeymap',  # <wmKeyMap>
 
-        c_void_p, 'pyop_poll',
+        # int (*pyop_poll)(struct bContext *, struct wmOperatorType *ot) ATTR_WARN_UNUSED_RESULT;
+        CFUNCTYPE(c_int, c_void_p, c_void_p), 'pyop_poll',
 
         ExtensionRNA, 'ext',
 

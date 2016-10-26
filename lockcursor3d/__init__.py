@@ -149,17 +149,12 @@ class VIEW3D_OT_cursor3d(bpy.types.Operator):
     def poll(cls, context):
         if cls.operator_type is None:
             return False
-        func_type = ct.CFUNCTYPE(ct.c_bool, ct.c_void_p)
-        func = ct.cast(cls.operator_type.poll, func_type)
-        r = func(context.as_pointer())
+        r = cls.operator_type.poll(context.as_pointer())
         return r and not context.space_data.lock_cursor_location
 
     def call_builtin_cursor3d(self, context, event):
-        ot = self.__class__.operator_type
-        func_type = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_void_p,
-                                 ct.c_void_p)
-        func = ct.cast(ot.invoke, func_type)
-        func(context.as_pointer(), self.as_pointer(), event.as_pointer())
+        self.__class__.operator_type.invoke(
+            context.as_pointer(), self.as_pointer(), event.as_pointer())
 
     def snap_to_circle(self, context):
         if context.mode == 'EDIT_MESH':
