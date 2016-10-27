@@ -319,26 +319,26 @@ class _CustomProperty:
             def load_post(scene):
                 custom_prop = cls.active()
                 for screen in bpy.data.screens:
-                    if (idprop_key not in screen or
-                            '_' + idprop_key not in screen):
-                        continue
-
-                    data = screen[idprop_key]
-                    data_used = screen['_' + idprop_key]
-                    i = j = 0
-                    try:
-                        for area in screen.areas:
-                            for space in area.spaces:
-                                if isinstance(space, obj):
-                                    a = cls.attribute(space, attr, True)
-                                    if data_used[i]:
-                                        custom_prop[a] = data[j]
-                                        j += 1
-                                    i += 1
-                    except:
-                        import traceback
-                        traceback.print_exc()
-                    del screen[idprop_key]
+                    data = screen.get(idprop_key)
+                    data_used = screen.get('_' + idprop_key)
+                    if data and data_used:
+                        i = j = 0
+                        try:
+                            for area in screen.areas:
+                                for space in area.spaces:
+                                    if isinstance(space, obj):
+                                        a = cls.attribute(space, attr, True)
+                                        if data_used[i]:
+                                            custom_prop[a] = data[j]
+                                            j += 1
+                                        i += 1
+                        except:
+                            import traceback
+                            traceback.print_exc()
+                    if data is not None:
+                        del screen[idprop_key]
+                    if data_used is not None:
+                        del screen['_' + idprop_key]
 
             load_post.key = idprop_key
             bpy.app.handlers.load_post.append(load_post)
