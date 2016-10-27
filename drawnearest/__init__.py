@@ -23,7 +23,7 @@ bl_info = {
     'version': (0, 4, 1),
     'blender': (2, 78, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
-    'description': 'Highlight element',
+    'description': 'Highlight mesh elements in editmode',
     'wiki_url': 'https://github.com/chromoly/blender-EditMeshDrawNearest',
     'category': '3D View',
 }
@@ -51,6 +51,7 @@ import mathutils
 from mathutils import Matrix, Vector
 import bgl
 import blf
+iface = bpy.app.translations.pgettext_iface
 # from bpy_extras.view3d_utils import location_3d_to_region_2d as project
 
 try:
@@ -75,6 +76,26 @@ OVERLAY_DRAW_Z = OVERLAY_MASK_Z - 1e-5
 POLYGON_OFFSET_EDGE = 1.05
 
 
+translation_dict = {
+    'ja_JP': {
+        ('*', 'Highlight mesh elements in editmode'):
+            'メッシュエディットモードで選択予定の頂点・辺・面を強調表示する',
+        ('*', 'Vertex Select'): '頂点選択',
+        ('*', 'Edge Select'): '辺選択',
+        ('*', 'Face Select'): '面選択',
+        ('*', 'Color'): '色',
+        ('*', 'Vertex Line Width'): '頂点の線幅',
+        ('*', 'Edge Line Width'): '辺の線幅',
+        ('*', 'Edge Stipple'): '辺の点線サイズ',
+        # ('*', 'Face Emphasis'): '面の描画',
+        ('*', 'Face Fill Stipple'): '面の点描サイズ',
+
+        ('*', 'Loop Color'): 'ループ色',
+        ('*', 'Loop Select'): 'ループ選択',
+    }
+}
+
+
 def test_platform():
     return (platform.platform().split('-')[0].lower()
             not in {'darwin', 'windows'})
@@ -91,21 +112,24 @@ class DrawNearestPreferences(
     bl_idname = __name__
 
     draw_set_vert = bpy.props.EnumProperty(
-        name='Draw Vertex',
-        items=(('VERT', 'Vert', ''),),
+        name='Vertex Select',
+        description='Vertex selection mode',
+        items=(('VERT', 'Vertex', ''),),
         default={'VERT'},
         options={'ENUM_FLAG'}
     )
     draw_set_edge = bpy.props.EnumProperty(
-        name='Draw Edge',
-        items=(('VERT', 'Vert', ''),
+        name='Edge Select',
+        description='Edge selection mode',
+        items=(('VERT', 'Vertex', ''),
                ('EDGE', 'Edge', '')),
         default={'VERT', 'EDGE'},
         options={'ENUM_FLAG'}
     )
     draw_set_face = bpy.props.EnumProperty(
-        name='Draw Face',
-        items=(('VERT', 'Vert', ''),
+        name='Face Select',
+        description='Face selection mode',
+        items=(('VERT', 'Vertex', ''),
                ('EDGE', 'Edge', ''),
                ('FACE', 'Face', '')),
         default={'VERT', 'EDGE', 'FACE'},
@@ -116,8 +140,8 @@ class DrawNearestPreferences(
         name='Overlay',
     )
 
-    select_color = bpy.props.FloatVectorProperty(
-        name='Select Color',
+    color = bpy.props.FloatVectorProperty(
+        name='Color',
         default=(0.0, 0.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
@@ -143,7 +167,7 @@ class DrawNearestPreferences(
         max=10,
     )
     edge_line_stipple = bpy.props.IntProperty(
-        name='Line Stipple',
+        name='Edge Stipple',
         default=5,
         min=0,
         max=20,
@@ -178,28 +202,28 @@ class DrawNearestPreferences(
         name='Loop Select',
         default=True,
     )
-    loop_select_color = bpy.props.FloatVectorProperty(
-        name='Loop Select Color',
+    loop_color = bpy.props.FloatVectorProperty(
+        name='Loop Color',
         default=(0.0, 0.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
         subtype='COLOR_GAMMA',
         size=4
     )
-    loop_select_line_width = bpy.props.IntProperty(
-        name='Loop Select Line Width',
+    loop_line_width = bpy.props.IntProperty(
+        name='Loop Line Width',
         default=3,
         min=0,
         max=10,
     )
-    loop_select_line_stipple = bpy.props.IntProperty(
-        name='Loop Select Line Stipple',
+    loop_line_stipple = bpy.props.IntProperty(
+        name='Loop Line Stipple',
         default=4,
         min=0,
         max=20,
     )
-    loop_select_face_stipple = bpy.props.IntProperty(
-        name='Loop Select Face Stipple',
+    loop_face_stipple = bpy.props.IntProperty(
+        name='Loop Face Stipple',
         description='Dot pattern size',
         default=2,
         min=1,
@@ -233,22 +257,22 @@ class DrawNearestPreferences(
         column = split.column()
         col = column.column()
         col.label('Draw:')
-        col.label('Vertex:')
+        col.label(iface('Vertex Select') + ':')
         row = col.row()
         sp = row.split(1.0 / 3)
         sp.row().prop(self, 'draw_set_vert')
-        col.label('Edge:')
+        col.label(iface('Edge Select') + ':')
         row = col.row()
         sp = row.split(1.0 / 3 * 2)
         sp.row().prop(self, 'draw_set_edge')
-        col.label('Face:')
+        col.label(iface('Face Select') + ':')
         row = col.row()
         sp = row.split()
         sp.row().prop(self, 'draw_set_face')
 
         column = split.column()
 
-        column.prop(self, 'select_color')
+        column.prop(self, 'color')
         column.prop(self, 'vertex_size')
         column.prop(self, 'vertex_line_width')
         column.prop(self, 'edge_line_width')
@@ -264,10 +288,10 @@ class DrawNearestPreferences(
         column.prop(self, 'use_loop_select')
         sub = column.column()
         sub.active = self.use_loop_select
-        sub.prop(self, 'loop_select_color')
-        sub.prop(self, 'loop_select_line_width')
-        sub.prop(self, 'loop_select_line_stipple')
-        sub.prop(self, 'loop_select_face_stipple')
+        sub.prop(self, 'loop_color')
+        sub.prop(self, 'loop_line_width')
+        sub.prop(self, 'loop_line_stipple')
+        sub.prop(self, 'loop_face_stipple')
 
         column = split.column()
         column.prop(self, 'use_overlay')
@@ -1970,7 +1994,7 @@ def draw_callback(cls, context):
             cm.exit()
 
     if mode == 'select':
-        bgl.glColor4f(*prefs.select_color)
+        bgl.glColor4f(*prefs.color)
         # target_type, target_index, verts, edges, faces, medians = target
 
         offs_pmat = polygon_offset_pers_mat(rv3d, 1)
@@ -2135,17 +2159,17 @@ def draw_callback(cls, context):
             bgl.glDepthMask(0)
         else:
             bgl.glDisable(bgl.GL_DEPTH_TEST)
-        bgl.glColor4f(*prefs.loop_select_color)
+        bgl.glColor4f(*prefs.loop_color)
 
         if faces:
-            dot_size = 2 ** (prefs.loop_select_face_stipple - 1)
+            dot_size = 2 ** (prefs.loop_face_stipple - 1)
             setpolygontone(True, dot_size)
             draw_faces('FILL')
             setpolygontone(False)
 
         elif edges:
-            bgl.glLineWidth(prefs.loop_select_line_width)
-            setlinestyle(prefs.loop_select_line_stipple)
+            bgl.glLineWidth(prefs.loop_line_width)
+            setlinestyle(prefs.loop_line_stipple)
             draw_edges()
             setlinestyle(0)
             bgl.glLineWidth(1)
@@ -2615,6 +2639,8 @@ def register():
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
     bpy.app.handlers.load_pre.append(load_pre)
 
+    bpy.app.translations.register(__name__, translation_dict)
+
 
 @DrawNearestPreferences.module_unregister
 def unregister():
@@ -2628,6 +2654,8 @@ def unregister():
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
+
+    bpy.app.translations.unregister(__name__)
 
 
 if __name__ == '__main__':
