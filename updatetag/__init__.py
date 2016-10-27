@@ -341,7 +341,7 @@ def get_modal_handlers(context):
         return []
 
     addr = window.as_pointer()
-    win = cast(c_void_p(addr), POINTER(wmWindow)).contents
+    win = cast(addr, POINTER(wmWindow)).contents
 
     handlers = []
 

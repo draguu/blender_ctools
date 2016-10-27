@@ -32,18 +32,20 @@ bl_info = {
 }
 
 
-from ctypes import *
+import ctypes as ct
 import importlib
 import platform as _platform
+
+import bpy
 
 try:
     importlib.reload(addongroup)
     importlib.reload(registerinfo)
-    importlib.reload(structures)
+    importlib.reload(st)
 except NameError:
     from . import addongroup
     from . import registerinfo
-from .structures import *
+    from . import structures as st
 
 
 platform = _platform.platform().split('-')[0].lower()
@@ -52,7 +54,7 @@ platform = _platform.platform().split('-')[0].lower()
 
 
 if platform == 'linux':
-    bl_cdll = CDLL('')
+    bl_cdll = ct.CDLL('')
 else:
     bl_cdll = None
 
@@ -77,38 +79,38 @@ class TabSwitcherPreferences(
         super().draw(context)
 
 
-class PanelCategoryDyn(Structure):
+class PanelCategoryDyn(ct.Structure):
     """DNA_screen_types.h: 131"""
 
-PanelCategoryDyn._fields_ = fields(
+PanelCategoryDyn._fields_ = st.fields(
     PanelCategoryDyn, '*next', '*prev',
-    c_char, 'idname[64]',
-    rcti, 'rect'
+    ct.c_char, 'idname[64]',
+    st.rcti, 'rect'
 )
 
 
-class PanelCategoryStack(Structure):
+class PanelCategoryStack(ct.Structure):
     """DNA_screen_types.h: 138"""
 
-PanelCategoryStack._fields_ = fields(
+PanelCategoryStack._fields_ = st.fields(
     PanelCategoryStack, '*next', '*prev',
-    c_char, 'idname[64]',
+    ct.c_char, 'idname[64]',
 )
 
 
 BKE_ST_MAXNAME = 64
 
 
-class PanelType(Structure):
+class PanelType(ct.Structure):
     """DNA_screen_types.h: 173"""
 
-PanelType._fields_ = fields(
+PanelType._fields_ = st.fields(
     PanelType, '*next', '*prev',
-    c_char * BKE_ST_MAXNAME, 'idname',
-    c_char * BKE_ST_MAXNAME, 'label',
-    c_char * BKE_ST_MAXNAME, 'translation_context',
-    c_char * BKE_ST_MAXNAME, 'context',
-    c_char * BKE_ST_MAXNAME, 'category',
+    ct.c_char * BKE_ST_MAXNAME, 'idname',
+    ct.c_char * BKE_ST_MAXNAME, 'label',
+    ct.c_char * BKE_ST_MAXNAME, 'translation_context',
+    ct.c_char * BKE_ST_MAXNAME, 'context',
+    ct.c_char * BKE_ST_MAXNAME, 'category',
     # (以下略)
 )
 
@@ -122,14 +124,14 @@ def UI_panel_category_find(ar, idname):
     prefs = TabSwitcherPreferences.get_instance()
     if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_find
-        func.argtypes = [c_void_p, c_char_p]
-        func.restype = c_void_p
-        addr = func(addressof(ar), idname)
+        func.argtypes = [ct.c_void_p, ct.c_char_p]
+        func.restype = ct.c_void_p
+        addr = func(ct.addressof(ar), idname)
     else:
         addr = ar.panels_category.find_string(
             idname, PanelCategoryDyn.idname.offset)
     if addr:
-        return cast(c_void_p(addr), POINTER(PanelCategoryDyn)).contents
+        return ct.cast(addr, ct.POINTER(PanelCategoryDyn)).contents
     else:
         return None
 
@@ -143,14 +145,14 @@ def UI_panel_category_active_find(ar, idname):
     prefs = TabSwitcherPreferences.get_instance()
     if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_active_find
-        func.argtypes = [c_void_p, c_char_p]
-        func.restype = c_void_p
-        addr = func(addressof(ar), idname)
+        func.argtypes = [ct.c_void_p, ct.c_char_p]
+        func.restype = ct.c_void_p
+        addr = func(ct.addressof(ar), idname)
     else:
         addr = ar.panels_category_active.find_string(
             idname, PanelCategoryStack.idname.offset)
     if addr:
-        return cast(c_void_p(addr), POINTER(PanelCategoryStack)).contents
+        return ct.cast(addr, ct.POINTER(PanelCategoryStack)).contents
     else:
         return None
 
@@ -164,12 +166,12 @@ def UI_panel_category_active_get(ar, set_fallback=False):
     prefs = TabSwitcherPreferences.get_instance()
     if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_active_get
-        func.argtypes = [c_void_p, c_bool]
-        func.restype = c_char_p
-        return func(addressof(ar), set_fallback)
+        func.argtypes = [ct.c_void_p, ct.c_bool]
+        func.restype = ct.c_char_p
+        return func(ct.addressof(ar), set_fallback)
 
-    pc_act_p = cast(ar.panels_category_active.first,
-                    POINTER(PanelCategoryStack))
+    pc_act_p = ct.cast(ar.panels_category_active.first,
+                       ct.POINTER(PanelCategoryStack))
     while pc_act_p:
         pc_act = pc_act_p.contents
         if UI_panel_category_find(ar, pc_act.idname):
@@ -177,7 +179,7 @@ def UI_panel_category_active_get(ar, set_fallback=False):
         pc_act_p = pc_act.next
 
     if set_fallback:
-        pc_dyn_p = cast(c_void_p(ar.panels_category.first), PanelCategoryDyn)
+        pc_dyn_p = ct.cast(ar.panels_category.first, PanelCategoryDyn)
         if pc_dyn_p:
             pc_dyn = pc_dyn_p.contents
             UI_panel_category_active_set(ar, pc_dyn.idname)
@@ -194,8 +196,8 @@ def UI_panel_category_active_set(ar, idname):
     prefs = TabSwitcherPreferences.get_instance()
     if prefs.use_c_functions and bl_cdll:
         func = bl_cdll.UI_panel_category_active_set
-        func.argtypes = [c_void_p, c_char_p]
-        func(addressof(ar), idname)
+        func.argtypes = [ct.c_void_p, ct.c_char_p]
+        func(ct.addressof(ar), idname)
         return
 
     lb = ar.panels_category_active
@@ -204,8 +206,8 @@ def UI_panel_category_active_set(ar, idname):
         lb.remove(pc_act)
     else:
         # FIXME: MEM_callocNの再現が不十分の為何が起こるか分からない
-        ptr = MEM_callocN(sizeof(PanelCategoryStack))  # 適当に増やす
-        pc_act = cast(c_void_p(ptr), POINTER(PanelCategoryStack)).contents
+        ptr = st.MEM_callocN(ct.sizeof(PanelCategoryStack))  # 適当に増やす
+        pc_act = ct.cast(ptr, ct.POINTER(PanelCategoryStack)).contents
         pc_act.idname = idname
     lb.insert(0, pc_act)
 
@@ -221,10 +223,10 @@ def UI_panel_category_active_set(ar, idname):
 
 def region_panel_categories_get(self):
     categories = []
-    ar = cast(c_void_p(self.as_pointer()), POINTER(ARegion)).contents
+    ar = ct.cast(self.as_pointer(), ct.POINTER(st.ARegion)).contents
     lb = ar.panels_category
     if lb.first:
-        pc_dyn_p = cast(c_void_p(lb.first), POINTER(PanelCategoryDyn))
+        pc_dyn_p = ct.cast(lb.first, ct.POINTER(PanelCategoryDyn))
         while pc_dyn_p:
             pc_dyn = pc_dyn_p.contents
             categories.append(pc_dyn.idname.decode())
@@ -233,7 +235,7 @@ def region_panel_categories_get(self):
 
 
 def region_active_panel_category_get(self):
-    ar = cast(c_void_p(self.as_pointer()), POINTER(ARegion)).contents
+    ar = ct.cast(self.as_pointer(), ct.POINTER(st.ARegion)).contents
     idname = UI_panel_category_active_get(ar)
     if idname is not None:
         idname = idname.decode()
@@ -241,7 +243,7 @@ def region_active_panel_category_get(self):
 
 
 def region_active_panel_category_set(self, idname):
-    ar = cast(c_void_p(self.as_pointer()), POINTER(ARegion)).contents
+    ar = ct.cast(self.as_pointer(), ct.POINTER(st.ARegion)).contents
     categories = self.panel_categories
     if not categories:
         raise ValueError('Categories do not exist: {}'.format(self))

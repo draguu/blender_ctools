@@ -35,7 +35,7 @@
 """
 
 
-import ctypes
+import ctypes as ct
 from ctypes import CDLL, Structure, Union, POINTER, addressof, cast, \
     c_bool, c_char, c_char_p, c_double, c_float, c_short, c_int, c_void_p, \
     py_object, c_ssize_t, c_uint, c_int8, c_uint8, CFUNCTYPE, byref, \
@@ -145,7 +145,7 @@ def MEM_callocN(length):
     length = _SIZET_ALIGN_4(length)
     memh_p = calloc(1, length + sizeof(MemHead))
     if memh_p:
-        memh = cast(c_void_p(memh_p), POINTER(MemHead)).contents
+        memh = cast(memh_p, POINTER(MemHead)).contents
         memh.len = length
         # 以下の関数は再現不可
         # atomic_add_u(&totblock, 1);
@@ -164,7 +164,7 @@ def MEM_mallocN(length):
     length = _SIZET_ALIGN_4(length)
     memh_p = calloc(1, length + sizeof(MemHead))
     if memh_p:
-        memh = cast(c_void_p(memh_p), POINTER(MemHead)).contents
+        memh = cast(memh_p, POINTER(MemHead)).contents
         memh.len = length
         # 以下の関数は再現不可
         # atomic_add_u(&totblock, 1);
@@ -193,7 +193,7 @@ class ListBase(Structure):
     )
 
     def __len__(self):
-        link_p = cast(c_void_p(self.first), POINTER(Link))
+        link_p = cast(self.first, POINTER(Link))
         i = 0
         while link_p:
             i += 1
@@ -248,7 +248,7 @@ class ListBase(Structure):
         """
         link_p = None
         if number >= 0:
-            link_p = cast(c_void_p(self.first), POINTER(Link))
+            link_p = cast(self.first, POINTER(Link))
             while link_p and number != 0:
                 number -= 1
                 link_p = link_p.contents.next
@@ -294,12 +294,12 @@ class ListBase(Structure):
         }
         """
         if vprevlink:
-            prevlink = cast(c_void_p(addressof(vprevlink)),
+            prevlink = cast(addressof(vprevlink),
                             POINTER(Link)).contents
         else:
             prevlink = None
         if vnewlink:
-            newlink = cast(c_void_p(addressof(vnewlink)),
+            newlink = cast(addressof(vnewlink),
                            POINTER(Link)).contents
         else:
             newlink = None
@@ -309,9 +309,9 @@ class ListBase(Structure):
 
         def gen_ptr(link):
             if isinstance(link, (int, type(None))):
-                return cast(c_void_p(link), POINTER(Link))
+                return cast(link, POINTER(Link))
             else:
-                return ctypes.pointer(link)
+                return ct.pointer(link)
 
         if not self.first:
             self.first = self.last = addressof(newlink)
@@ -358,10 +358,10 @@ class ListBase(Structure):
         :type offset: int
         :rtype: int | None
         """
-        link_p = cast(c_void_p(self.first), POINTER(Link))
+        link_p = cast(self.first, POINTER(Link))
         while link_p:
             link_addr = addressof(link_p.contents)
-            id_iter = cast(c_void_p(link_addr + offset), c_char_p).value
+            id_iter = cast(link_addr + offset, c_char_p).value
             if identifier[0] == id_iter[0] and identifier == id_iter:
                 return link_addr
             link_p = link_p.contents.next
@@ -920,10 +920,9 @@ class wmOperator(Structure):
     # python/intern/bpy_operator.c: 423: pyop_getinstance()
     pyop = bpy.ops.wm.splash
     opinst = pyop.get_instance()
-    pyrna = ct.cast(ct.c_void_p(id(opinst)),
-                     ct.POINTER(structures.BPy_StructRNA)).contents
+    pyrna = ct.cast(id(opinst), ct.POINTER(structures.BPy_StructRNA)).contents
     # wmOperator
-    op = ct.cast(ct.c_void_p(pyrna.ptr.data),
+    op = ct.cast(pyrna.ptr.data,
                  ct.POINTER(structures.wmOperator)).contents
     # wmOperatorType
     ot = op.type.contents
@@ -998,7 +997,7 @@ class wmWindow(Structure):
             return []
 
         addr = window.as_pointer()
-        win = cast(c_void_p(addr), POINTER(wmWindow)).contents
+        win = cast(addr, POINTER(wmWindow)).contents
 
         handlers = []
 
@@ -1784,19 +1783,19 @@ class BMWalker(Structure):
 ###############################################################################
 # Python Header
 ###############################################################################
-class PyObject_HEAD(ctypes.Structure):
+class PyObject_HEAD(ct.Structure):
     _fields_ = [
         # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
-        ('ob_refcnt', ctypes.c_ssize_t),
-        ('ob_type', ctypes.c_void_p),
+        ('ob_refcnt', ct.c_ssize_t),
+        ('ob_type', ct.c_void_p),
     ]
 
-class PyObject_VAR_HEAD(ctypes.Structure):
+class PyObject_VAR_HEAD(ct.Structure):
     _fields_ = [
         # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
-        ('ob_refcnt', ctypes.c_ssize_t),
-        ('ob_type', ctypes.c_void_p),
-        ('ob_size', ctypes.c_ssize_t),
+        ('ob_refcnt', ct.c_ssize_t),
+        ('ob_type', ct.c_void_p),
+        ('ob_size', ct.c_ssize_t),
     ]
 
 
@@ -2046,8 +2045,8 @@ def image_pixels_get(image):
 
     image_pixels = image.pixels  # インスタンスは終わるまで残しとかないと駄目
     addr = id(image_pixels)
-    bpy_prop = cast(c_void_p(addr), POINTER(BPy_PropertyArrayRNA)).contents
-    ptr = cast(c_void_p(ctypes.addressof(bpy_prop.ptr)), POINTER(PointerRNA))
+    bpy_prop = cast(addr, POINTER(BPy_PropertyArrayRNA)).contents
+    ptr = cast(addressof(bpy_prop.ptr), POINTER(PointerRNA))
     prop = bpy_prop.prop
     pixels = np.zeros(len(image.pixels), dtype=np.float32)
     RNA_property_float_get_array(ptr, prop, c_void_p(pixels.ctypes.data))
@@ -2071,8 +2070,8 @@ def image_pixels_set(image, pixels):
 
     image_pixels = image.pixels
     addr = id(image_pixels)
-    bpy_prop = cast(c_void_p(addr), POINTER(BPy_PropertyArrayRNA)).contents
-    ptr = cast(c_void_p(ctypes.addressof(bpy_prop.ptr)), POINTER(PointerRNA))
+    bpy_prop = cast(addr, POINTER(BPy_PropertyArrayRNA)).contents
+    ptr = cast(addressof(bpy_prop.ptr), POINTER(PointerRNA))
     prop = bpy_prop.prop
     RNA_property_float_set_array(ptr, prop, c_void_p(pixels.ctypes.data))
 
@@ -2121,10 +2120,10 @@ def context_py_dict_get_linux(context):
     CTX_py_dict_get = blend_cdll.CTX_py_dict_get
     CTX_py_dict_get.restype = c_void_p
     addr = context.__class__.as_pointer(context)  # 警告抑制の為
-    C = cast(c_void_p(addr), POINTER(bContext))
+    C = cast(addr, POINTER(bContext))
     ptr = CTX_py_dict_get(C)
     if ptr is not None:  # int
-        return cast(c_void_p(ptr), py_object).value
+        return cast(ptr, py_object).value
     else:
         return None
 
@@ -2137,7 +2136,7 @@ def context_py_dict_set_linux(context, py_dict):
     blend_cdll = CDLL('')
     CTX_py_dict_set = blend_cdll.CTX_py_dict_set
     addr = context.__class__.as_pointer(context)  # 警告抑制の為
-    C = cast(c_void_p(addr), POINTER(bContext))
+    C = cast(addr, POINTER(bContext))
     context_dict_back = context_py_dict_get(context)
     if py_dict is not None:
         CTX_py_dict_set(C, py_object(py_dict))
@@ -2148,27 +2147,27 @@ def context_py_dict_set_linux(context, py_dict):
 
 
 ###############################################################################
-class _Buffer_buf(ctypes.Union):
+class _Buffer_buf(ct.Union):
     _fields_ = [
-        ('asbyte', ctypes.POINTER(ctypes.c_char)),
-        ('asshort', ctypes.POINTER(ctypes.c_short)),
-        ('asint', ctypes.POINTER(ctypes.c_int)),
-        ('asfloat', ctypes.POINTER(ctypes.c_float)),
-        ('asdouble', ctypes.POINTER(ctypes.c_double)),
+        ('asbyte', ct.POINTER(ct.c_char)),
+        ('asshort', ct.POINTER(ct.c_short)),
+        ('asint', ct.POINTER(ct.c_int)),
+        ('asfloat', ct.POINTER(ct.c_float)),
+        ('asdouble', ct.POINTER(ct.c_double)),
 
-        ('asvoid', ctypes.c_void_p),
+        ('asvoid', ct.c_void_p),
     ]
 
 
-class Buffer(ctypes.Structure):
+class Buffer(ct.Structure):
     _anonymous_ = ('_head',)
     _fields_ = [
         ('_head', PyObject_VAR_HEAD),
-        ('parent', ctypes.py_object),
+        ('parent', ct.py_object),
 
-        ('type', ctypes.c_int),   # GL_BYTE, GL_SHORT, GL_INT, GL_FLOAT
-        ('ndimensions', ctypes.c_int),
-        ('dimensions', ctypes.POINTER(ctypes.c_int)),
+        ('type', ct.c_int),   # GL_BYTE, GL_SHORT, GL_INT, GL_FLOAT
+        ('ndimensions', ct.c_int),
+        ('dimensions', ct.POINTER(ct.c_int)),
 
         ('buf', _Buffer_buf),
     ]
@@ -2176,7 +2175,7 @@ class Buffer(ctypes.Structure):
 
 def buffer_to_ctypes(buf):
     import ctypes as ct
-    c_buf_p = ct.cast(ct.c_void_p(id(buf)), ct.POINTER(Buffer))
+    c_buf_p = ct.cast(id(buf), ct.POINTER(Buffer))
     c_buf = c_buf_p.contents
     types = {
         bgl.GL_BYTE: ct.c_byte,
