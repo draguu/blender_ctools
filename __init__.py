@@ -1,17 +1,17 @@
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
-#  This program is free software you can redistribute it and/or
+#  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation either version 2
+#  as published by the Free Software Foundation; either version 2
 #  of the License, or (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY without even the implied warranty of
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with this program if not, write to the Free Software Foundation,
+#  along with this program; if not, write to the Free Software Foundation,
 #  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 # ##### END GPL LICENSE BLOCK #####
@@ -21,13 +21,14 @@ bl_info = {
     'name': 'QuadView Move',
     'author': 'chromoly',
     'version': (0, 2),
-    'blender': (2, 76, 0),
+    'blender': (2, 77, 0),
     'location': 'View3D',
     'description': '',
     'warning': '',
-    'wiki_url': '',
+    'wiki_url': 'https://github.com/chromoly/quadview_move',
     'tracker_url': '',
-    'category': 'Screen'}
+    'category': '3D View',
+}
 
 
 """
@@ -35,11 +36,16 @@ QuadViewの境界中心をドラッグする事でその大きさを変更する
 """
 
 
-from ctypes import POINTER, cast, c_void_p
+import importlib
 import math
 
 import bpy
 
+try:
+    importlib.reload(structures)
+    importlib.reload(utils)
+except NameError:
+    from . import utils
 from .structures import *
 
 
@@ -47,224 +53,12 @@ from .structures import *
 MIN_SIZE = 5
 
 
-class SpaceProperty:
-    """
-    bpy.types.Spaceに仮想的なプロパティを追加
-
-    # インスタンス生成
-    space_prop = SpaceProperty(
-        [[bpy.types.SpaceView3D, 'lock_cursor_location',
-          bpy.props.BoolProperty()]])
-
-    # 描画時
-    def draw(self, context):
-        layout = self.layout
-        view = context.space_data
-        prop = space_prop.get_prop(view, 'lock_cursor_location')
-        layout.prop(prop, 'lock_cursor_location')
-
-    # register / unregister
-    def register():
-        space_prop.register()
-
-    def unregister():
-        space_prop.unregister()
-    """
-
-    space_types = {
-        'EMPTY': bpy.types.Space,
-        'NONE': bpy.types.Space,
-        'CLIP_EDITOR': bpy.types.SpaceClipEditor,
-        'CONSOLE': bpy.types.SpaceConsole,
-        'DOPESHEET_EDITOR': bpy.types.SpaceDopeSheetEditor,
-        'FILE_BROWSER': bpy.types.SpaceFileBrowser,
-        'GRAPH_EDITOR': bpy.types.SpaceGraphEditor,
-        'IMAGE_EDITOR': bpy.types.SpaceImageEditor,
-        'INFO': bpy.types.SpaceInfo,
-        'LOGIC_EDITOR': bpy.types.SpaceLogicEditor,
-        'NLA_EDITOR': bpy.types.SpaceNLA,
-        'NODE_EDITOR': bpy.types.SpaceNodeEditor,
-        'OUTLINER': bpy.types.SpaceOutliner,
-        'PROPERTIES': bpy.types.SpaceProperties,
-        'SEQUENCE_EDITOR': bpy.types.SpaceSequenceEditor,
-        'TEXT_EDITOR': bpy.types.SpaceTextEditor,
-        'TIMELINE': bpy.types.SpaceTimeline,
-        'USER_PREFERENCES': bpy.types.SpaceUserPreferences,
-        'VIEW_3D': bpy.types.SpaceView3D,
-    }
-    # space_types_r = {v: k for k, v in space_types.items()}
-
-    def __init__(self, *props):
-        """
-        :param props: [[space_type, attr, prop], ...]
-            [[文字列かbpy.types.Space, 文字列,
-              bpy.props.***()かPropertyGroup], ...]
-        :type props: list[list]
-        """
-        self.props = [list(elem) for elem in props]
-        for elem in self.props:
-            space_type = elem[0]
-            if isinstance(space_type, str):
-                elem[0] = self.space_types[space_type]
-        self.registered = []
-        self.save_pre = self.save_post = self.load_post = None
-
-    def gen_save_pre(self):
-        @bpy.app.handlers.persistent
-        def save_pre(dummy):
-            wm = bpy.context.window_manager
-            for (space_type, attr, prop), (cls, wm_prop_name) in zip(
-                    self.props, self.registered):
-                if wm_prop_name not in wm:
-                    continue
-                d = {p['name']: p for p in wm[wm_prop_name]}  # not p.name
-                for screen in bpy.data.screens:
-                    ls = []
-                    for area in screen.areas:
-                        for space in area.spaces:
-                            if isinstance(space, space_type):
-                                key = str(space.as_pointer())
-                                if key in d:
-                                    ls.append(d[key])
-                                else:
-                                    ls.append({})
-                    screen[wm_prop_name] = ls
-        self.save_pre = save_pre
-        return save_pre
-
-    def gen_save_post(self):
-        @bpy.app.handlers.persistent
-        def save_post(dummy):
-            # 掃除
-            for cls, wm_prop_name in self.registered:
-                for screen in bpy.data.screens:
-                    if wm_prop_name in screen:
-                        del screen[wm_prop_name]
-        self.save_post = save_post
-        return save_post
-
-    def gen_load_post(self):
-        @bpy.app.handlers.persistent
-        def load_post(dummy):
-            from collections import OrderedDict
-            for (space_type, attr, prop), (cls, wm_prop_name) in zip(
-                    self.props, self.registered):
-                d = OrderedDict()
-                for screen in bpy.data.screens:
-                    if wm_prop_name not in screen:
-                        continue
-
-                    spaces = []
-                    for area in screen.areas:
-                        for space in area.spaces:
-                            if isinstance(space, space_type):
-                                spaces.append(space)
-
-                    for space, p in zip(spaces, screen[wm_prop_name]):
-                        key = p['name'] = str(space.as_pointer())
-                        d[key] = p
-                if d:
-                    bpy.context.window_manager[wm_prop_name] = list(d.values())
-
-            # 掃除
-            for cls, wm_prop_name in self.registered:
-                for screen in bpy.data.screens:
-                    if wm_prop_name in screen:
-                        del screen[wm_prop_name]
-
-        self.load_post = load_post
-        return load_post
-
-    def get_prop(self, space, attr=''):
-        """
-        :type space: bpy.types.Space
-        :param attr: プロパティが一つだけの場合のみ省略可
-        :type attr: str
-        :return:
-        :rtype:
-        """
-        context = bpy.context
-        for (space_type, attri, prop), (cls, wm_prop_name) in zip(
-                self.props, self.registered):
-            if isinstance(space, space_type):
-                if attri == attr or not attr and len(self.props) == 1:
-                    seq = getattr(context.window_manager, wm_prop_name)
-                    key = str(space.as_pointer())
-                    if key not in seq:
-                        item = seq.add()
-                        item.name = key
-                    return seq[key]
-
-    def _property_name(self, space_type, attr):
-        return space_type.__name__.lower() + '_' + attr
-
-    def register(self):
-        import inspect
-        for space_type, attr, prop in self.props:
-            if inspect.isclass(prop) and \
-                    issubclass(prop, bpy.types.PropertyGroup):
-                cls = prop
-            else:
-                name = 'WM_PG_' + space_type.__name__ + '_' + attr
-                cls = type(name, (bpy.types.PropertyGroup,), {attr: prop})
-                bpy.utils.register_class(cls)
-
-            collection_prop = bpy.props.CollectionProperty(type=cls)
-            wm_prop_name = self._property_name(space_type, attr)
-            setattr(bpy.types.WindowManager, wm_prop_name, collection_prop)
-
-            self.registered.append((cls, wm_prop_name))
-
-            def gen():
-                def get(self):
-                    seq = getattr(bpy.context.window_manager, wm_prop_name)
-                    key = str(self.as_pointer())
-                    if key not in seq:
-                        item = seq.add()
-                        item.name = key
-                    return getattr(seq[key], attr)
-
-                def set(self, value):
-                    seq = getattr(bpy.context.window_manager, wm_prop_name)
-                    key = str(self.as_pointer())
-                    if key not in seq:
-                        item = seq.add()
-                        item.name = key
-                    return setattr(seq[key], attr, value)
-
-                return property(get, set)
-
-            setattr(space_type, attr, gen())
-
-        bpy.app.handlers.save_pre.append(self.gen_save_pre())
-        bpy.app.handlers.save_post.append(self.gen_save_post())
-        bpy.app.handlers.load_post.append(self.gen_load_post())
-
-    def unregister(self):
-        bpy.app.handlers.save_pre.remove(self.save_pre)
-        bpy.app.handlers.save_post.remove(self.save_post)
-        bpy.app.handlers.load_post.remove(self.load_post)
-
-        for (space_type, attr, prop), (cls, wm_prop_name) in zip(
-                self.props, self.registered):
-            delattr(bpy.types.WindowManager, wm_prop_name)
-            if wm_prop_name in bpy.context.window_manager:
-                del bpy.context.window_manager[wm_prop_name]
-            delattr(space_type, attr)
-
-            bpy.utils.unregister_class(cls)
-
-            for screen in bpy.data.screens:
-                if wm_prop_name in screen:
-                    del screen[wm_prop_name]
-
-        self.registered.clear()
-
-
 class QuadViewMovePreferences(
-        bpy.types.PropertyGroup if '.' in __package__ else
+        utils.AddonPreferences,
+        utils.AddonRegisterInfo,
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
 
     # 反応する閾値
     threshold = bpy.props.IntProperty(
@@ -279,56 +73,7 @@ class QuadViewMovePreferences(
         column = split.column()
         column = split.column()
 
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
-
-
-def get_window_modal_handlers(window):
-    """ctypesを使い、windowに登録されている modal handlerのリストを返す。
-    idnameはUIなら 'UI'、認識できない物なら 'UNKNOWN' となる。
-    :rtype: list[(Structures.wmEventHandler, str, int, int, int)]
-    """
-    if not window:
-        return []
-
-    addr = window.as_pointer()
-    win = cast(c_void_p(addr), POINTER(wmWindow)).contents
-
-    handlers = []
-
-    ptr = cast(win.modalhandlers.first, POINTER(wmEventHandler))
-    while ptr:
-        # http://docs.python.jp/3/library/ctypes.html#surprises
-        # この辺りの事には注意する事
-        handler = ptr.contents
-        area = handler.op_area  # NULLの場合はNone
-        region = handler.op_region  # NULLの場合はNone
-        idname = 'UNKNOWN'
-        if handler.ui_handle:
-            idname = 'UI'
-        if handler.op:
-            op = handler.op.contents
-            ot = op.type.contents
-            if ot.idname:
-                idname = ot.idname.decode()
-        handlers.append((handler, idname, area, region,
-                         handler.op_region_type))
-        ptr = handler.next
-
-    return handlers
+        super().draw(context, self.layout)
 
 
 def swin_from_region(window, region):
@@ -352,7 +97,7 @@ def get_active_region_index(context, mx, my, regions, rv3d_list):
             return i
 
     # test modal handler
-    handlers = get_window_modal_handlers(context.window)
+    handlers = wmWindow.modal_handlers(context.window)
     for h, idname, sa, ar, rt in handlers:
         if idname in ('VIEW3D_OT_zoom', 'VIEW3D_OT_move'):
             if ar is not None:
@@ -378,7 +123,7 @@ class VIEW3D_PG_QuadViewAspect(bpy.types.PropertyGroup):
     center = bpy.props.FloatVectorProperty(size=2)
 
 
-space_prop = SpaceProperty(
+space_prop = utils.SpaceProperty(
     [bpy.types.SpaceView3D, 'quadview_aspect',
      VIEW3D_PG_QuadViewAspect])
 
@@ -387,7 +132,7 @@ def sync_quad(context, area):
     """source/blender/editors/screen/area.c: region_rect_recursive()辺りを参考
     """
     v3d = area.spaces.active
-    prop = space_prop.get_prop(v3d)
+    prop = space_prop.get(v3d)
     if not prop.enable:
         return
     fx, fy = prop.center
@@ -475,7 +220,7 @@ def sync_quad(context, area):
 class VIEW3D_OT_quadview_move(bpy.types.Operator):
     bl_idname = 'view3d.quadview_move'
     bl_label = 'QuadView Move'
-    bl_options = set()  # {'REGISTER'}
+    bl_options = set()
 
     @classmethod
     def poll(cls, context):
@@ -487,12 +232,12 @@ class VIEW3D_OT_quadview_move(bpy.types.Operator):
 
     def modal(self, context, event):
         v3d = context.area.spaces.active
-        prop = space_prop.get_prop(v3d)
+        prop = space_prop.get(v3d)
 
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             context.window.cursor_set('DEFAULT')
             return {'FINISHED'}
-        elif event.type == 'ESC':
+        elif event.type in {'ESC', 'RIGHTMOUSE'}:
             prop.center = (0.5, 0.5)
             sync_quad(context, context.area)
             prop.enable = False
@@ -530,7 +275,7 @@ class VIEW3D_OT_quadview_move(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
-        prefs = QuadViewMovePreferences.get_prefs()
+        prefs = QuadViewMovePreferences.get_instance()
 
         mco = self.mco = (event.mouse_x, event.mouse_y)
         for region in context.area.regions:
@@ -575,9 +320,8 @@ classes = [
     VIEW3D_PG_QuadViewAspect,
 ]
 
-addon_keymaps = []
 
-
+@QuadViewMovePreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -589,17 +333,13 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        km = kc.keymaps.new('Screen Editing', space_type='EMPTY')
+        km = QuadViewMovePreferences.get_keymap('Screen Editing')
         kmi = km.keymap_items.new('view3d.quadview_move', 'LEFTMOUSE', 'PRESS',
                                   head=True)
-        addon_keymaps.append((km, kmi))
 
 
+@QuadViewMovePreferences.module_unregister
 def unregister():
-    for km, kmi in addon_keymaps:
-        km.keymap_items.remove(kmi)
-    addon_keymaps.clear()
-
     bpy.app.handlers.scene_update_post.remove(scene_update_func)
 
     space_prop.unregister()
