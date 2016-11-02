@@ -95,6 +95,25 @@ def set_fields(cls, *field_items):
 
 
 ###############################################################################
+# Python Header
+###############################################################################
+class PyObject_HEAD(ct.Structure):
+    _fields_ = [
+        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
+        ('ob_refcnt', ct.c_ssize_t),
+        ('ob_type', ct.c_void_p),
+    ]
+
+class PyObject_VAR_HEAD(ct.Structure):
+    _fields_ = [
+        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
+        ('ob_refcnt', ct.c_ssize_t),
+        ('ob_type', ct.c_void_p),
+        ('ob_size', ct.c_ssize_t),
+    ]
+
+
+###############################################################################
 # メモリ操作
 ###############################################################################
 def _get_malloc_calloc_free():
@@ -176,7 +195,7 @@ def MEM_mallocN(length):
 
 
 ###############################################################################
-# blenkernel / makesdna / windowmanager/ editors
+# ListBase
 ###############################################################################
 class Link(Structure):
     """source/blender/makesdna/DNA_listBase.h: 47"""
@@ -387,6 +406,244 @@ class ListBase(Structure):
         assert(not link1.next)
 
 
+###############################################################################
+# PropertyRNA
+###############################################################################
+class _PointerRNA_id(Structure):
+    """makesrna/RNA_types.h"""
+    _fields_ = fields(
+        c_void_p, 'data',
+    )
+
+
+class PointerRNA(Structure):
+    """makesrna/RNA_types.h"""
+    _fields_ = fields(
+        _PointerRNA_id, 'id',
+        c_void_p, 'type',  # <StructRNA> &RNA_Operator 等の値
+        c_void_p, 'data',
+    )
+
+
+RNA_MAX_ARRAY_DIMENSION = 3  # rna_internal_types.h: 54
+
+
+class PropertyRNA(Structure):
+    """rna_internal_types.h: 155"""
+
+PropertyRNA._fields_ = fields(
+    PropertyRNA, '*next', '*prev',
+
+    # magic bytes to distinguish with IDProperty
+    c_int, 'magic',
+
+    # unique identifier
+    # c_char, '*identifier',  # <const char>
+    c_char_p, 'identifier',
+    # various options
+    c_int, 'flag',
+
+    # user readable name
+    c_char, '*name',  # <const char>
+    # single line description, displayed in the tooltip for example
+    c_char, '*description',  # <const char>
+    # icon ID
+    c_int, 'icon',
+    # context for translation
+    c_char, '*translation_context',  # <const char>
+
+    # property type as it appears to the outside
+    c_int, 'type',  # <enum: PropertyType>
+    # subtype, 'interpretation' of the property
+    c_int, 'subtype',  # <enum: PropertySubType>
+    # if non-NULL, overrides arraylength. Must not return 0?
+    c_void_p, 'getlength',  # <PropArrayLengthGetFunc>
+    # dimension of array
+    c_uint, 'arraydimension',  # <unsigned int>
+    # array lengths lengths for all dimensions (when arraydimension > 0)
+    c_uint, 'arraylength[3]',
+    # <unsigned int> arraylength[RNA_MAX_ARRAY_DIMENSION]
+    c_uint, 'totarraylength',  # <unsigned int>
+
+    # callback for updates on change
+    c_void_p, 'update',  # <UpdateFunc>
+    c_int, 'noteflag',
+
+    # callback for testing if editable
+    c_void_p, 'editable',  # <EditableFunc>
+    # callback for testing if array-item editable (if applicable)
+    c_void_p, 'itemeditable',  # <ItemEditableFunc>
+
+    # raw access
+    c_int, 'rawoffset',
+    c_int, 'rawtype',  # <enum: RawPropertyType>
+
+    # This is used for accessing props/functions of this property
+    # any property can have this but should only be used for collections and arrays
+    # since python will convert int/bool/pointer's
+    c_void, '*srna',
+    # <StructRNA>  # attributes attached directly to this collection
+
+    # python handle to hold all callbacks
+    # * (in a pointer array at the moment, may later be a tuple)
+    c_void, '*py_data',
+)
+
+
+class FloatPropertyRNA(Structure):
+    """rna_internal_types.h: 252"""
+
+PropFloatGetFunc = CFUNCTYPE(c_float, POINTER(PointerRNA))
+PropFloatSetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA), c_float)
+PropFloatArrayGetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA),
+                                  POINTER(c_float))
+PropFloatArraySetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA),
+                                  POINTER(c_float))
+PropFloatRangeFunc = CFUNCTYPE(c_int, POINTER(PointerRNA),
+                               c_float, c_float, c_float, c_float)
+
+FloatPropertyRNA._fields_ = fields(
+    PropertyRNA, 'property',
+
+    PropFloatGetFunc, 'get',
+    PropFloatSetFunc, 'set',
+    PropFloatArrayGetFunc, 'getarray',
+    PropFloatArraySetFunc, 'setarray',
+    PropFloatRangeFunc, 'range',
+
+    # PropFloatGetFuncEx, 'get_ex',
+    # PropFloatSetFuncEx, 'set_ex',
+    # PropFloatArrayGetFuncEx, 'getarray_ex',
+    # PropFloatArraySetFuncEx, 'setarray_ex',
+    # PropFloatRangeFuncEx, 'range_ex',
+    #
+    # c_float, 'softmin', 'softmax',
+    # c_float, 'hardmin', 'hardmax',
+    # c_float, 'step',
+    # c_int, 'precision',
+    #
+    # c_float, 'defaultvalue',
+    # c_float, '*defaultarray',   # <cost float>
+)
+
+
+class BPy_StructRNA(Structure):
+    """python/intern/bpy_rna.h"""
+    _fields_ = fields(
+        PyObject_HEAD, 'head',
+        PointerRNA, 'ptr',
+    )
+
+
+class BPy_PropertyRNA(Structure):
+    """python/intern/bpy_rna.h"""
+    _fields_ = fields(
+        PyObject_HEAD, 'head',
+        PointerRNA, 'ptr',
+        PropertyRNA, '*prop',
+    )
+
+
+class BPy_PropertyArrayRNA(Structure):
+    """python/intern/bpy_rna.h"""
+    _fields_ = fields(
+        PyObject_HEAD, 'head',
+        PointerRNA, 'ptr',
+        PropertyRNA, '*prop',
+        c_int, 'arraydim',
+        c_int, 'arrayoffset',
+    )
+
+
+def RNA_property_float_get_array(ptr, prop, values):
+    """
+    :param ptr: PointerRNA *ptr
+    :type ptr: POINTER(PointerRNA)
+    :param prop: PropertyRNA *prop
+    :type prop: POINTER(PropertyRNA)
+    :param values: float *values
+    :type values: POINTER(c_float)
+    """
+    fprop = cast(prop, POINTER(FloatPropertyRNA)).contents
+    fprop.getarray(ptr, cast(values, POINTER(c_float)))
+
+
+def RNA_property_float_set_array(ptr, prop, values):
+    """
+    :param ptr: PointerRNA *ptr
+    :type ptr: POINTER(PointerRNA)
+    :param prop: PropertyRNA *prop
+    :type prop: POINTER(PropertyRNA)
+    :param values: float *values
+    :type values: POINTER(c_float)
+    """
+    fprop = cast(prop, POINTER(FloatPropertyRNA)).contents
+    fprop.setarray(ptr, cast(values, POINTER(c_float)))
+
+
+###############################################################################
+# StructRNA
+###############################################################################
+class ContainerRNA(Structure):
+    """rna_internal_types.h"""
+    _fields_ = fields(
+        c_void_p, 'next', 'prev',
+        c_void_p, 'prophash',  # struct GHash *prophash
+        ListBase, 'properties',
+    )
+
+
+RNA_MAX_ARRAY_DIMENSION = 3
+
+
+class StructRNA(Structure):
+    """rna_internal_types.h
+
+    bl_rna = bpy.types.VIEW3D_OT_cursor3d.bl_ran
+    addr = bl_rna.as_pointer()
+    srna = ct.cast(addr, ct.POINTER(structures.StructRNA)).contents
+    """
+
+StructRNA._fields_ = fields(
+    ContainerRNA, 'cont',
+
+    c_char_p, 'identifier',
+
+    c_void_p, 'py_type',
+    c_void_p, 'blender_type',
+
+    c_int, 'flag',
+
+    c_char_p, 'name',
+    c_char_p, 'description',
+    c_char_p, 'translation_context',
+    c_int, 'icon',
+
+    PropertyRNA, '*nameproperty',
+
+    PropertyRNA, '*iteratorproperty',
+
+    StructRNA, '*base',
+
+    StructRNA, '*nested',
+
+    c_void_p, 'refine',
+
+    c_void_p, 'path',
+
+    c_void_p, 'reg',  # StructRegisterFunc
+    c_void_p, 'unreg',  # StructUnregisterFunc
+    c_void_p, 'instance',  # StructInstanceFunc
+
+    c_void_p, 'idproperties',  # IDPropertiesFunc
+
+    ListBase, 'functions',
+)
+
+
+###############################################################################
+# blenkernel / makesdna / windowmanager/ editors
+###############################################################################
 class rcti(Structure):
     """DNA_vec_types.h: 86
     NOTE: region.width == ar.winrct.xmax - ar.winrct.xmin + 1
@@ -842,6 +1099,27 @@ wmEvent._fields_ = fields(
 )
 
 
+# operator type return flags: exec(), invoke() modal(), return values
+OPERATOR_RUNNING_MODAL = 1 << 0
+OPERATOR_CANCELLED = 1 << 1
+OPERATOR_FINISHED = 1 << 2
+# add this flag if the event should pass through
+OPERATOR_PASS_THROUGH = 1 << 3
+# in case operator got executed outside WM code... like via fileselect
+OPERATOR_HANDLED = 1 << 4
+# used for operators that act indirectly (eg. popup menu)
+# note: this isn't great design (using operators to trigger UI) avoid where
+#       possible.
+OPERATOR_INTERFACE = 1 << 5
+OPERATOR_FLAGS_ALL = (
+    OPERATOR_RUNNING_MODAL |
+    OPERATOR_CANCELLED |
+    OPERATOR_FINISHED |
+    OPERATOR_PASS_THROUGH |
+    OPERATOR_HANDLED |
+    OPERATOR_INTERFACE |
+    0)
+
 # wmOperatorType.flag
 OPTYPE_REGISTER = (1 << 0)  # register operators in stack after finishing
 OPTYPE_UNDO = (1 << 1)  # do undo push after after
@@ -863,7 +1141,7 @@ OPTYPE_LOCK_BYPASS = (1 << 7)  # Allow operator to run when interface is locked
 class ExtensionRNA(Structure):
     _fields_ = fields(
         c_void, '*data',
-        c_void, '*srna',  # <StructRNA>
+        StructRNA, '*srna',
         c_void_p,'call',  # <StructCallbackFunc>
         c_void_p,'free'  # <StructFreeFunc>
     )
@@ -894,11 +1172,11 @@ class wmOperatorType(Structure):
         # void (*ui)(struct bContext *, struct wmOperator *);
         CFUNCTYPE(c_int, c_void_p, c_void_p), 'ui',
 
-        c_void_p, 'srna',  # <StructRNA>
+        StructRNA, '*srna',
 
         c_void_p, 'last_properties',  # <IDProperty>
 
-        c_void_p, 'prop',  # <PropertyRNA>
+        PropertyRNA, '*prop',  # <PropertyRNA>
 
         ListBase, 'macro',
 
@@ -1781,256 +2059,6 @@ class BMWalker(Structure):
 
 
 ###############################################################################
-# Python Header
-###############################################################################
-class PyObject_HEAD(ct.Structure):
-    _fields_ = [
-        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
-        ('ob_refcnt', ct.c_ssize_t),
-        ('ob_type', ct.c_void_p),
-    ]
-
-class PyObject_VAR_HEAD(ct.Structure):
-    _fields_ = [
-        # py_object, '_ob_next', '_ob_prev';  # When Py_TRACE_REFS is defined
-        ('ob_refcnt', ct.c_ssize_t),
-        ('ob_type', ct.c_void_p),
-        ('ob_size', ct.c_ssize_t),
-    ]
-
-
-###############################################################################
-# PropertyRNA
-###############################################################################
-class _PointerRNA_id(Structure):
-    """makesrna/RNA_types.h"""
-    _fields_ = fields(
-        c_void_p, 'data',
-    )
-
-
-class PointerRNA(Structure):
-    """makesrna/RNA_types.h"""
-    _fields_ = fields(
-        _PointerRNA_id, 'id',
-        c_void_p, 'type',  # <StructRNA> &RNA_Operator 等の値
-        c_void_p, 'data',
-    )
-
-
-RNA_MAX_ARRAY_DIMENSION = 3  # rna_internal_types.h: 54
-
-
-class PropertyRNA(Structure):
-    """rna_internal_types.h: 155"""
-
-PropertyRNA._fields_ = fields(
-    PropertyRNA, '*next', '*prev',
-
-    # magic bytes to distinguish with IDProperty
-    c_int, 'magic',
-
-    # unique identifier
-    c_char, '*identifier',  # <const char>
-    # various options
-    c_int, 'flag',
-
-    # user readable name
-    c_char, '*name',  # <const char>
-    # single line description, displayed in the tooltip for example
-    c_char, '*description',  # <const char>
-    # icon ID
-    c_int, 'icon',
-    # context for translation
-    c_char, '*translation_context',  # <const char>
-
-    # property type as it appears to the outside
-    c_int, 'type',  # <enum: PropertyType>
-    # subtype, 'interpretation' of the property
-    c_int, 'subtype',  # <enum: PropertySubType>
-    # if non-NULL, overrides arraylength. Must not return 0?
-    c_void_p, 'getlength',  # <PropArrayLengthGetFunc>
-    # dimension of array
-    c_uint, 'arraydimension',  # <unsigned int>
-    # array lengths lengths for all dimensions (when arraydimension > 0)
-    c_uint, 'arraylength[3]',  # <unsigned int> arraylength[RNA_MAX_ARRAY_DIMENSION]
-    c_uint, 'totarraylength',  # <unsigned int>
-
-    # callback for updates on change
-    c_void_p, 'update',  # <UpdateFunc>
-    c_int, 'noteflag',
-
-    # callback for testing if editable
-    c_void_p, 'editable',  # <EditableFunc>
-    # callback for testing if array-item editable (if applicable)
-    c_void_p, 'itemeditable',  # <ItemEditableFunc>
-
-    # raw access
-    c_int, 'rawoffset',
-    c_int, 'rawtype',  # <enum: RawPropertyType>
-
-    # This is used for accessing props/functions of this property
-    # any property can have this but should only be used for collections and arrays
-    # since python will convert int/bool/pointer's
-    c_void, '*srna',  # <StructRNA>  # attributes attached directly to this collection
-
-    # python handle to hold all callbacks
-    # * (in a pointer array at the moment, may later be a tuple)
-    c_void, '*py_data',
-    )
-
-
-class FloatPropertyRNA(Structure):
-    """rna_internal_types.h: 252"""
-
-
-PropFloatGetFunc = CFUNCTYPE(c_float, POINTER(PointerRNA))
-PropFloatSetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA), c_float)
-PropFloatArrayGetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA), POINTER(c_float))
-PropFloatArraySetFunc = CFUNCTYPE(c_int, POINTER(PointerRNA), POINTER(c_float))
-PropFloatRangeFunc = CFUNCTYPE(c_int, POINTER(PointerRNA),
-                               c_float, c_float, c_float, c_float)
-
-FloatPropertyRNA._fields_ = fields(
-    PropertyRNA, 'property',
-
-    PropFloatGetFunc, 'get',
-    PropFloatSetFunc, 'set',
-    PropFloatArrayGetFunc, 'getarray',
-    PropFloatArraySetFunc, 'setarray',
-    PropFloatRangeFunc, 'range',
-
-    # PropFloatGetFuncEx, 'get_ex',
-    # PropFloatSetFuncEx, 'set_ex',
-    # PropFloatArrayGetFuncEx, 'getarray_ex',
-    # PropFloatArraySetFuncEx, 'setarray_ex',
-    # PropFloatRangeFuncEx, 'range_ex',
-    #
-    # c_float, 'softmin', 'softmax',
-    # c_float, 'hardmin', 'hardmax',
-    # c_float, 'step',
-    # c_int, 'precision',
-    #
-    # c_float, 'defaultvalue',
-    # c_float, '*defaultarray',   # <cost float>
-)
-
-
-class BPy_StructRNA(Structure):
-    """python/intern/bpy_rna.h"""
-    _fields_ = fields(
-        PyObject_HEAD, 'head',
-        PointerRNA, 'ptr',
-    )
-
-
-class BPy_PropertyRNA(Structure):
-    """python/intern/bpy_rna.h"""
-    _fields_ = fields(
-        PyObject_HEAD, 'head',
-        PointerRNA, 'ptr',
-        PropertyRNA, '*prop',
-    )
-
-
-class BPy_PropertyArrayRNA(Structure):
-    """python/intern/bpy_rna.h"""
-    _fields_ = fields(
-        PyObject_HEAD, 'head',
-        PointerRNA, 'ptr',
-        PropertyRNA, '*prop',
-        c_int, 'arraydim',
-        c_int, 'arrayoffset',
-    )
-
-
-def RNA_property_float_get_array(ptr, prop, values):
-    """
-    :param ptr: PointerRNA *ptr
-    :type ptr: POINTER(PointerRNA)
-    :param prop: PropertyRNA *prop
-    :type prop: POINTER(PropertyRNA)
-    :param values: float *values
-    :type values: POINTER(c_float)
-    """
-    fprop = cast(prop, POINTER(FloatPropertyRNA)).contents
-    fprop.getarray(ptr, cast(values, POINTER(c_float)))
-
-
-def RNA_property_float_set_array(ptr, prop, values):
-    """
-    :param ptr: PointerRNA *ptr
-    :type ptr: POINTER(PointerRNA)
-    :param prop: PropertyRNA *prop
-    :type prop: POINTER(PropertyRNA)
-    :param values: float *values
-    :type values: POINTER(c_float)
-    """
-    fprop = cast(prop, POINTER(FloatPropertyRNA)).contents
-    fprop.setarray(ptr, cast(values, POINTER(c_float)))
-
-
-###############################################################################
-# StructRNA
-###############################################################################
-class ContainerRNA(Structure):
-    """rna_internal_types.h"""
-    _fields_ = fields(
-        c_void_p, 'next', 'prev',
-        c_void_p, 'prophash',  # struct GHash *prophash
-        ListBase, 'properties',
-    )
-
-
-RNA_MAX_ARRAY_DIMENSION = 3
-
-
-class StructRNA(Structure):
-    """rna_internal_types.h
-
-    bl_rna = bpy.types.VIEW3D_OT_cursor3d.bl_ran
-    addr = bl_rna.as_pointer()
-    srna = ct.cast(addr, ct.POINTER(structures.StructRNA)).contents
-    """
-
-StructRNA._fields_ = fields(
-    ContainerRNA, 'cont',
-
-    c_char_p, 'identifier',
-
-    c_void_p, 'py_type',
-    c_void_p, 'blender_type',
-
-    c_int, 'flag',
-
-    c_char_p, 'name',
-    c_char_p, 'description',
-    c_char_p, 'translation_context',
-    c_int, 'icon',
-
-    PropertyRNA, '*nameproperty',
-
-    PropertyRNA, '*iteratorproperty',
-
-    StructRNA, '*base',
-
-    StructRNA, '*nested',
-
-    c_void_p, 'refine',
-
-    c_void_p, 'path',
-
-    c_void_p, 'reg',  # StructRegisterFunc
-    c_void_p, 'unreg',  # StructUnregisterFunc
-    c_void_p, 'instance',  # StructInstanceFunc
-
-    c_void_p, 'idproperties',  # IDPropertiesFunc
-
-    ListBase, 'functions',
-)
-
-
-###############################################################################
 #
 ###############################################################################
 def image_pixels_get(image):
@@ -2175,6 +2203,7 @@ class Buffer(ct.Structure):
 
 def buffer_to_ctypes(buf):
     import ctypes as ct
+    import bgl
     c_buf_p = ct.cast(id(buf), ct.POINTER(Buffer))
     c_buf = c_buf_p.contents
     types = {

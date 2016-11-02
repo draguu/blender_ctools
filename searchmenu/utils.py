@@ -18,7 +18,28 @@
 
 
 import bpy
-_bpy = bpy  # addon_utils.py用
+
+
+def py_idname(name):
+    """WM_operator_py_idname
+    SOME_OT_op -> some.op
+    """
+    if '_OT_' in name:
+        mod, func = name.split('_OT_')
+        return mod.lower() + '.' + func
+    else:
+        return name
+
+
+def bl_idname(name):
+    """WM_operator_bl_idname
+    some.op -> SOME_OT_op
+    """
+    if '.' in name:
+        mod, func = name.split('.')
+        return mod.upper() + '_OT_' + func
+    else:
+        return name
 
 
 def operator_call(op, *args, _scene_update=True, **kw):
