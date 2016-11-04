@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'QuadView Move',
     'author': 'chromoly',
-    'version': (0, 2, 1),
+    'version': (0, 2, 2),
     'blender': (2, 78, 0),
     'location': 'View3D',
     'description': '',
@@ -48,10 +48,10 @@ try:
     importlib.reload(registerinfo)
     importlib.reload(st)
 except NameError:
-    from . import addongroup
-    from . import customproperty
-    from . import registerinfo
-    from . import structures as st
+    from .addonutils import addongroup
+    from .addonutils import customproperty
+    from .addonutils import registerinfo
+    from .addonutils import structures as st
 
 
 # regionの幅と高さの最小幅
