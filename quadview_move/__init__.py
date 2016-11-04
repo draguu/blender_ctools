@@ -48,10 +48,10 @@ try:
     importlib.reload(registerinfo)
     importlib.reload(st)
 except NameError:
-    from .va import addongroup
-    from .va import customproperty
-    from .va import registerinfo
-    from .va import structures as st
+    from .addonutils import addongroup
+    from .addonutils import customproperty
+    from .addonutils import registerinfo
+    from .addonutils import structures as st
 
 
 # regionの幅と高さの最小幅
