@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Edit Mesh Draw Nearest',
     'author': 'chromoly',
-    'version': (0, 4, 1),
+    'version': (0, 4, 2),
     'blender': (2, 78, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
     'description': 'Highlight mesh elements in editmode',

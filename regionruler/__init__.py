@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Region Ruler',
     'author': 'chromoly',
-    'version': (2, 4, 1),
+    'version': (2, 4, 2),
     'blender': (2, 78, 0),
     'location': 'View3D > Properties, ImageEditor > Properties',
     'description': '',

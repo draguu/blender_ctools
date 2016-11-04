@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'QuadView Move',
     'author': 'chromoly',
-    'version': (0, 2, 1),
+    'version': (0, 2, 2),
     'blender': (2, 78, 0),
     'location': 'View3D',
     'description': '',

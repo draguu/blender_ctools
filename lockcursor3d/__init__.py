@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Lock 3D Cursor',
     'author': 'chromoly',
-    'version': (0, 4, 0),
+    'version': (0, 4, 1),
     'blender': (2, 78, 0),
     'location': '3D View -> Action Mouse / Alt + Action Mouse',
     'description': 'commit a791153: 3D Cursor: Add option to lock it in place '

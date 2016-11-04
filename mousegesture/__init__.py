@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Mouse Gesture',
     'author': 'chromoly',
-    'version': (0, 7, 1),
+    'version': (0, 7, 2),
     'blender': (2, 78, 0),
     'location': 'UserPreferences > Add-ons > Mouse Gesture',
     'description': '',
