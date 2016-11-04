@@ -46,8 +46,8 @@ try:
     importlib.reload(addongroup)
     importlib.reload(registerinfo)
 except NameError:
-    from .va import addongroup
-    from .va import registerinfo
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
 
 
 class UpdateTagPreferences(
