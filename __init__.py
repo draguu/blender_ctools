@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Edit Mesh Draw Nearest',
     'author': 'chromoly',
-    'version': (0, 4, 1),
+    'version': (0, 4, 2),
     'blender': (2, 78, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
     'description': 'Highlight mesh elements in editmode',
@@ -61,11 +61,11 @@ try:
     importlib.reload(st)
     importlib.reload(utils)
 except NameError:
-    from . import addongroup
-    from . import customproperty
-    from . import registerinfo
-    from . import structures as st
-    from . import utils
+    from .va import addongroup
+    from .va import customproperty
+    from .va import registerinfo
+    from .va import structures as st
+    from .va import utils
 
 
 # glVertexへ渡すZ値。
