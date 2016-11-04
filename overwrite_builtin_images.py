@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-
+#!/usr/bin/env python
 
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
@@ -21,9 +20,29 @@
 
 
 """
-blender-2.75aのスプラッシュ画像を置換する。(2.75も可？)
-linuxとwindowsでのみ使える。動作確認は公式の2.75a-64bit(linux,win)のみ。
-バイナリを弄るので自己責任で。
+blenderのスプラッシュ画像を置換する。
+
+バイナリを書き換えるスクリプト。Windows / Linux
+
+1. overwrite_builtin_images.pyと下記の画像をblender.exe(blender)と同じフォルダに配置。
+  * splash.png (501x282)
+  * splash_2x.png (1002x564)
+  * icons16.png (602x640)
+  * icons32.png (1204x1280)
+
+  変更する画像だけ用意すればいい。
+  フォーマットは png, jpeg, jpeg2000, tiff が使用可。
+  拡張子は '.png', '.jpg', '.jpeg', '.jpe', '.tif', '.tiff', '.jp2', '.jpc', '.j2k' 。
+  圧縮率と透過を扱えるという点でjpeg2000を推奨。(blenderが対応しているか確認しておくこと)
+
+2. コマンドプロンプト(端末)からスクリプトを実行して書き換える。
+`python3 overwrite_builtin_images.py`
+
+
+* 埋め込まれた元画像よりファイルサイズが大きい物は使用出来ない。
+
+* `--extract`オプションを付けて実行すると現在使用している画像が splash_builtin.png, splash_2x_builtin.png, icons16_builtin.png, icons32_builtin.png として出力される。
+`python3 overwrite_builtin_images.py --extract`
 """
 
 
@@ -58,9 +77,14 @@ def find_png(buf, width, height):
         w = h = 0
         chunk_end = False
         addr += 8
+        head = True
         while not chunk_end:
             chunk_length, chunk_type = struct.unpack(
                 '>I4s', buf[addr: addr + 8])
+            if head:
+                if chunk_length != 13:  # 不正なpng? 公式のlinux-2.78-64bitで遭遇
+                    break
+                head = False
             addr += 8
             if chunk_type == b'\x00\x00\x00\x00':  # 不正なpngが存在
                 break
@@ -82,7 +106,7 @@ def get_defalut_target():
     if p == 'linux':
         target = 'blender'
     elif p == 'windows':
-        target = 'blender-app.exe'
+        target = 'blender.exe'
     else:  # 'darwin'
         target = ''
     return target
@@ -162,16 +186,16 @@ def main(target, extract=False):
         image_addresses[h] = d
 
     if extract:
-        with open('splash.builtin', 'wb') as fp:
+        with open('splash_builtin.png', 'wb') as fp:
             fp.write(bl[splash_addr: splash_addr + splash_size])
-        with open('splash_2x.builtin', 'wb') as fp:
+        with open('splash_2x_builtin.png', 'wb') as fp:
             fp.write(bl[splash2x_addr: splash2x_addr + splash2x_size])
-        with open('icons16.builtin', 'wb') as fp:
+        with open('icons16_builtin.png', 'wb') as fp:
             fp.write(bl[icons16_addr: icons16_addr + icons16_size])
-        with open('icons32.builtin', 'wb') as fp:
+        with open('icons32_builtin.png', 'wb') as fp:
             fp.write(bl[icons32_addr: icons32_addr + icons32_size])
-        print('Extracted. splash.builtin, splash_2x.builtin, icons16.builtin, '
-              'icons32.builtin')
+        print('Extracted. splash_builtin.png, splash_2x_builtin.png, '
+              'icons16_builtin.png, icons32_builtin.png')
         sys.exit()
 
     def write_image(image_addr, image_capacity, image, file_name):
@@ -179,31 +203,38 @@ def main(target, extract=False):
         if image_size > image_capacity:
             print('{} is {} bytes. Max: {} bytes'.format(
                 file_name, image_size, image_capacity))
+            return False
         bl[image_addr: image_addr + image_size] = image
         n = image_capacity - image_size
         bl[image_addr + image_size: image_addr + image_size + n] = bytearray(n)
+        return True
 
+    wrote_files = []
     if splash:
-        write_image(splash_addr, splash_capacity, splash, splash_name)
-        splash_size = len(splash)
+        if write_image(splash_addr, splash_capacity, splash, splash_name):
+            splash_size = len(splash)
+            wrote_files.append(splash_name)
     if splash2x:
-        write_image(splash2x_addr, splash2x_capacity, splash2x, splash2x_name)
-        splash2x_size = len(splash2x)
+        if write_image(splash2x_addr, splash2x_capacity, splash2x,
+                       splash2x_name):
+           splash2x_size = len(splash2x)
+           wrote_files.append(splash2x_name)
     if icons16:
-        write_image(icons16_addr, icons16_capacity, icons16, icons16_name)
-        icons16_size = len(icons16)
+        if write_image(icons16_addr, icons16_capacity, icons16, icons16_name):
+            icons16_size = len(icons16)
+            wrote_files.append(icons16_name)
     if icons32:
-        write_image(icons32_addr, icons32_capacity, icons32, icons32_name)
-        icons32_size = len(icons32)
+        if write_image(icons32_addr, icons32_capacity, icons32, icons32_name):
+            icons32_size = len(icons32)
+        wrote_files.append(icons32_name)
 
     # overwrite
     with open(target, 'wb') as fp:
         fp.write(bl)
-    names = ', '.join([name for name in [splash_name, splash2x_name,
-                                         icons16_name, icons32_name]
-                       if name])
-    if names:
-        print('Overwrite with ' + names)
+    if wrote_files:
+        print('Overwrite with ' + ', '.join(wrote_files))
+    elif not any([splash, splash2x, icons16, icons32]):
+        print('No image files')
 
     # write log file
     m = hashlib.md5()
@@ -219,15 +250,15 @@ def main(target, extract=False):
 
 
 script_usage = """
-1. Copy images and script to blender directory:
-  blender --- blender-app.exe (or blender (linux))
-           |- splash.png (png / jpeg / tiff /jpeg2000)
+1. Copy images and this script file to blender directory:
+  blender --- blender.exe (or blender (linux))
+           |- splash.png (png / jpeg / tiff / jpeg2000)
            |    (size: 501x282, max: 187546 bytes))
-           |- splash_2x.png (png / jpeg / tiff /jpeg2000)
+           |- splash_2x.png (png / jpeg / tiff / jpeg2000)
            |    (size: 1002x564, max: 632582 bytes)
-           |- icons16.png (png / jpeg / tiff /jpeg2000)
+           |- icons16.png (png / jpeg / tiff / jpeg2000)
            |    (size: 602x640, max: about 200kB)
-           |- icons32.png (png / jpeg / tiff /jpeg2000)
+           |- icons32.png (png / jpeg / tiff / jpeg2000)
            |    (size: 1204x1280, max: about 550kB)
            `- overwrite_builtin_images.py (this script)
 2. Run this script:
@@ -239,7 +270,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter,
-        description='Overwrite blender-2.75(a) splash/icons image.',
+        description='Overwrite blender splash/icons image',
         usage=script_usage
     )
     parser.add_argument(

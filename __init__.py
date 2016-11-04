@@ -20,20 +20,34 @@
 bl_info = {
     'name': 'Overwrite Builtin Images',
     'author': 'chromoly',
-    'version': (0, 2),
-    'blender': (2, 76, 0),
+    'version': (0, 2, 1),
+    'blender': (2, 78, 0),
     'location': 'UserPreference > Add-ons > Overwrite Builtin Images',
     'description': 'Overwrite splash and icon images',
     'warning': 'Linux only',
-    'wiki_url': '',
-    'category': 'System',
+    'wiki_url': 'https://github.com/chromoly/blender-OverwriteBuiltinImages',
+    'category': 'User Interface',
 }
 
 
 import ctypes
+import importlib
+import platform
 
 import bpy
 import bpy.props
+
+try:
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
+except NameError:
+    from . import addongroup
+    from . import registerinfo
+
+
+def test_platform():
+    return (platform.platform().split('-')[0].lower()
+            not in {'darwin', 'windows'})
 
 
 def get_size_ptr(blend_cdll, size_name):
@@ -69,20 +83,37 @@ attrs.update({v: k for k, v in attrs.items()})
 
 
 # builtin images
-blend_cdll = ctypes.CDLL('')
 original = {}
-for size, image in (('splash_size', 'splash'),
-                    ('splash2x_size', 'splash2x'),
-                    ('icons16_size', 'icons16'),
-                    ('icons32_size', 'icons32')):
-    original[size] = get_size_ptr(blend_cdll, size).contents.value
-    arr = get_image_ptr(blend_cdll, image)
-    original[image] = [arr[i] for i in range(original[size])]
+
+
+def read_original():
+    original.clear()
+    if test_platform():
+        blend_cdll = ctypes.CDLL('')
+    else:
+        blend_cdll = None
+    for size, image in (('splash_size', 'splash'),
+                        ('splash2x_size', 'splash2x'),
+                        ('icons16_size', 'icons16'),
+                        ('icons32_size', 'icons32')):
+        if blend_cdll:
+            original[size] = get_size_ptr(blend_cdll, size).contents.value
+            arr = get_image_ptr(blend_cdll, image)
+            original[image] = [arr[i] for i in range(original[size])]
+        else:
+            original[size] = 0
+            original[image] = []
+
+
+read_original()
 
 
 def update_image(context, image_type, image_size,
                  update_icons_cache=True):
-    pref = OverwriteSplashImagePreferences.get_prefs()
+    if not test_platform():
+        return
+
+    pref = OverwriteSplashImagePreferences.get_instance()
     if image_type == 'splash':
         if image_size == 1:
             image_name = 'splash'
@@ -166,9 +197,12 @@ def update_icons32(self, context):
 
 
 class OverwriteSplashImagePreferences(
-        bpy.types.PropertyGroup if '.' in __package__ else
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
+
     splash = bpy.props.StringProperty(
         name='Splash Image',
         description='size: 501x282, max: {:,} bytes ({})'.format(
@@ -219,24 +253,14 @@ class OverwriteSplashImagePreferences(
         icon = 'ERROR' if self.icons32_alert else 'NONE'
         row.prop(self, 'icons32', icon=icon)
 
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
+        self.layout.separator()
+        super().draw(context)
 
 
 def restore_all():
+    if not test_platform():
+        return
+
     blend_cdll = ctypes.CDLL('')
     for size_name, image_name in (('splash_size', 'splash'),
                                   ('splash2x_size', 'splash2x'),
@@ -252,16 +276,25 @@ def restore_all():
     blend_cdll.ui_resources_init()
 
 
+classes = [
+    OverwriteSplashImagePreferences,
+]
+
+
+@OverwriteSplashImagePreferences.module_register
 def register():
-    bpy.utils.register_class(OverwriteSplashImagePreferences)
+    for cls in classes:
+        bpy.utils.register_class(cls)
     update_image(bpy.context, 'splash', 1)
     update_image(bpy.context, 'splash', 2)
     update_image(bpy.context, 'icons', 1, False)
     update_image(bpy.context, 'icons', 2)
 
 
+@OverwriteSplashImagePreferences.module_unregister
 def unregister():
-    bpy.utils.unregister_class(OverwriteSplashImagePreferences)
+    for cls in classes[::-1]:
+        bpy.utils.register_class(cls)
     restore_all()
 
 
