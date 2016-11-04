@@ -17,34 +17,45 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
+bl_info = {
+    'name': 'Update Tag',
+    'author': 'chromoly',
+    'version': (0, 3, 1),
+    'blender': (2, 78, 0),
+    'location': '',
+    'description': '',
+    'wiki_url': 'https://github.com/chromoly/blender_update_tag',
+    'category': '3D View',
+}
+
+
 """
 1. マテリアルやテクスチャのドライバーの値が変更された時に3DViewを更新
 2. Sculptモードでブラシ描画の際にRendered表示の3DViewを更新
 """
 
 
-bl_info = {
-    'name': 'Update Tag',
-    'author': 'chromoly',
-    'version': (0, 3),
-    'blender': (2, 76, 0),
-    'location': '',
-    'description': '',
-    'category': '3D View'
-}
-
-
 from ctypes import Structure, POINTER, cast, \
     c_char, c_char_p, c_short, c_int, c_void_p, py_object
+import importlib
 import time
 
 import bpy
 
+try:
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
+except NameError:
+    from . import addongroup
+    from . import registerinfo
+
 
 class UpdateTagPreferences(
-        bpy.types.PropertyGroup if '.' in __package__ else
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
 
     # マテリアルのドライバの値が変わると更新
     use_material = bpy.props.BoolProperty(
@@ -89,21 +100,8 @@ class UpdateTagPreferences(
         sub.prop(self, 'sculpt_interval')
         sub.active = self.use_sculpt
 
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
+        self.layout.separator()
+        super().draw(context)
 
 
 class MATERIAL_PT_driver_update_tag(bpy.types.Panel):
@@ -115,7 +113,7 @@ class MATERIAL_PT_driver_update_tag(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        prefs = UpdateTagPreferences.get_prefs()
+        prefs = UpdateTagPreferences.get_instance()
         return prefs.use_material
 
     def draw(self, context):
@@ -132,7 +130,7 @@ class TEXTURE_PT_driver_update_tag(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        prefs = UpdateTagPreferences.get_prefs()
+        prefs = UpdateTagPreferences.get_instance()
         return prefs.use_texture
 
     def draw(self, context):
@@ -343,7 +341,7 @@ def get_modal_handlers(context):
         return []
 
     addr = window.as_pointer()
-    win = cast(c_void_p(addr), POINTER(wmWindow)).contents
+    win = cast(addr, POINTER(wmWindow)).contents
 
     handlers = []
 
@@ -409,7 +407,9 @@ def callback_scene_update_pre(scene):
     if context.region:
         return
 
-    prefs = UpdateTagPreferences.get_prefs()
+    prefs = UpdateTagPreferences.get_instance()
+    if not prefs:
+        return
     if prefs.use_material:
         update_materials()
     if prefs.use_texture:
@@ -428,6 +428,7 @@ classes = [
 ]
 
 
+@UpdateTagPreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -440,6 +441,7 @@ def register():
     bpy.app.handlers.scene_update_pre.append(callback_scene_update_pre)
 
 
+@UpdateTagPreferences.module_unregister
 def unregister():
     bpy.app.handlers.scene_update_pre.remove(callback_scene_update_pre)
 
