@@ -20,14 +20,16 @@
 bl_info = {
     'name': 'Lock Coordinates',
     'author': 'chromoly',
-    'version': (0, 2, 3),
-    'blender': (2, 76, 0),
+    'version': (0, 2, 4),
+    'blender': (2, 78, 0),
     'location': 'View3D > ToolShelf > Lock Coordinates, '
                 'View3D > Header, '
                 'View3D > Ctrl + V > Lock, '
                 'View3D > Ctrl + Shift + L',
     'description': 'Lock vertices coordinates in mesh edit mode',
-    'category': 'Mesh'}
+    'wiki_url': 'https://github.com/chromoly/blender_lock_coords',
+    'category': 'Mesh',
+}
 
 
 """
@@ -41,13 +43,21 @@ bpy.ops.mesh.sort_elements()で頂点の順番が並び替えられる。
 """
 
 
-import time
-import platform
 import ctypes
+import importlib
+import platform
+import time
 
 import bpy
 import bmesh
 from mathutils import Vector
+
+try:
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
+except NameError:
+    from . import addongroup
+    from . import registerinfo
 
 
 # BMLayerItem name
@@ -56,9 +66,6 @@ LAYER_LOCK = 'use_lock'  # verts.layers.int
 LAYER_X = 'lock_x'  # verts.layers.float
 LAYER_Y = 'lock_y'  # verts.layers.float
 LAYER_Z = 'lock_z'  # verts.layers.float
-LAYER_GX = 'lock_global_x'  # verts.layers.float 0.2.0でのみ使用
-LAYER_GY = 'lock_global_y'  # verts.layers.float 0.2.0でのみ使用
-LAYER_GZ = 'lock_global_z'  # verts.layers.float 0.2.0でのみ使用
 LAYER_TMP_SELECT = '_select'  # [verts|edges|faces].layers.int
 LAYER_TMP_HISTORY = '_history'  # [verts|edges|faces].layers.int
 LAYER_TMP_ACTIVE = '_active'  # faces.layers.int
@@ -73,7 +80,7 @@ DEFAULT_SELECTABLE = False
 # メニュー呼び出しに使うショートカット
 MENU_KEYMAPS = (
     {'type': 'L', 'value': 'PRESS', 'shift': True, 'ctrl': True},
-    # {'type': 'BUTTON16MOUSE', 'value': 'PRESS', 'shift': True, 'ctrl': True},
+    {'type': 'BUTTON16MOUSE', 'value': 'PRESS', 'shift': True, 'ctrl': True},
 )
 
 # 頂点選択が無効になっている時の速度低下の軽減(linuxのみ)
@@ -181,8 +188,7 @@ def callback_save_pre(dummy):
             skip = True
             if LAYER_LOCK in me.vertex_layers_int:
                 skip = False
-            for name in (LAYER_X, LAYER_Y, LAYER_Z,
-                         LAYER_GX, LAYER_GY, LAYER_GZ):
+            for name in (LAYER_X, LAYER_Y, LAYER_Z):
                 if name in me.vertex_layers_float:
                     skip = False
             if skip:
@@ -190,11 +196,6 @@ def callback_save_pre(dummy):
             bm = bmesh.new()
             bm.from_mesh(me)
         for name in (LAYER_X, LAYER_Y, LAYER_Z):
-            layer = bm.verts.layers.float.get(name)
-            if layer:
-                bm.verts.layers.float.remove(layer)
-        # 0.2.0で追加した分
-        for name in (LAYER_GX, LAYER_GY, LAYER_GZ):
             layer = bm.verts.layers.float.get(name)
             if layer:
                 bm.verts.layers.float.remove(layer)
@@ -695,6 +696,8 @@ class MESH_PT_LockCoords(bpy.types.Panel):
         # col.operator_enum('mesh.lock_coords', 'mode')
         op = col.operator('mesh.lock_coords', text='Lock')
         op.mode = 'LOCK_SEL'
+        op = col.operator('mesh.lock_coords', text='Lock Deselected')
+        op.mode = 'LOCK_DESEL'
         op = col.operator('mesh.lock_coords', text='Unlock')
         op.mode = 'UNLOCK_SEL'
         op = col.operator('mesh.lock_coords', text='Unlock All')
@@ -747,6 +750,8 @@ class VIEW3D_MT_edit_mesh_lock_coords(bpy.types.Menu):
         # layout.operator_enum('mesh.lock_coords', 'mode')
         op = layout.operator('mesh.lock_coords', text='Lock Selected')
         op.mode = 'LOCK_SEL'
+        op = layout.operator('mesh.lock_coords', text='Lock Deselected')
+        op.mode = 'LOCK_DESEL'
         op = layout.operator('mesh.lock_coords', text='Unlock Selected')
         op.mode = 'UNLOCK_SEL'
         op = layout.operator('mesh.lock_coords', text='Unlock All')
@@ -794,6 +799,17 @@ def draw_header(self, context):
 
 
 ###############################################################################
+# AddonPreferences
+###############################################################################
+class LockCoordsPreferences(
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
+        bpy.types.PropertyGroup if '.' in __name__ else
+        bpy.types.AddonPreferences):
+    bl_idname = __name__
+
+
+###############################################################################
 # Register
 ###############################################################################
 classes = [
@@ -803,11 +819,11 @@ classes = [
     WM_PROP_LockCoords,
     MESH_PT_LockCoords,
     VIEW3D_MT_edit_mesh_lock_coords,
+    LockCoordsPreferences,
 ]
 
-addon_keymaps = []
 
-
+@LockCoordsPreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -831,16 +847,13 @@ def register():
             try:
                 kmi = km.keymap_items.new('wm.call_menu', **kwargs)
                 kmi.properties.name = 'VIEW3D_MT_edit_mesh_lock_coords'
-                addon_keymaps.append((km, kmi))
             except:
+                # import traceback
+                # traceback.print_exc()
                 pass
 
-        # kmi = km.keymap_items.new(
-        #         'mesh.lock_coords_sort_order', 'L', 'PRESS',
-        #         shift=True, ctrl=True, alt=True)
-        # addon_keymaps.append((km, kmi))
 
-
+@LockCoordsPreferences.module_unregister
 def unregister():
     try:
         delattr(PREFS_LOCATION[0], 'lock_coords')
@@ -849,10 +862,6 @@ def unregister():
     for obj in getattr(bpy.data, PREFS_LOCATION[2]):
         if obj.get('lock_coords') is not None:
             del obj['lock_coords']
-
-    for km, kmi in addon_keymaps:
-        km.keymap_items.remove(kmi)
-    addon_keymaps.clear()
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
