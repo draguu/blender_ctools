@@ -755,51 +755,68 @@ ARegionType._fields_ = fields(
 class SpaceType(Structure):
     """BKE_screen.h: 66"""
 
+BKE_ST_MAXNAME = 64
+
 SpaceType._fields_ = fields(
-    # struct SpaceType *next, *prev
-    #
-    # char name[BKE_ST_MAXNAME]                  # for menus
-    # int spaceid                                # unique space identifier
-    # int iconid                                 # icon lookup for menus
-    #
-    # # initial allocation, after this WM will call init() too
+    SpaceType, '*next', '*prev',
+
+    c_char * BKE_ST_MAXNAME, 'name',  # for menus
+    c_int, 'spaceid',  # unique space identifier
+    c_int, 'iconid',  # icon lookup for menus
+
+    # initial allocation, after this WM will call init() too
     # struct SpaceLink    *(*new)(const struct bContext *C)
-    # # not free spacelink itself
+    c_char_p, 'new',
+    # not free spacelink itself
     # void (*free)(struct SpaceLink *)
-    #
-    # # init is to cope with file load, screen (size) changes, check handlers
+    c_void_p, 'free',
+
+    # init is to cope with file load, screen (size) changes, check handlers
     # void (*init)(struct wmWindowManager *, struct ScrArea *)
-    # # exit is called when the area is hidden or removed
+    c_void_p, 'init',
+    # exit is called when the area is hidden or removed
     # void (*exit)(struct wmWindowManager *, struct ScrArea *)
-    # # Listeners can react to bContext changes
+    c_void_p, 'exit',
+    # Listeners can react to bContext changes
     # void (*listener)(struct bScreen *sc, struct ScrArea *, struct wmNotifier *)
-    #
-    # # refresh context, called after filereads, ED_area_tag_refresh()
+    c_void_p, 'listener',
+
+    # refresh context, called after filereads, ED_area_tag_refresh()
     # void (*refresh)(const struct bContext *, struct ScrArea *)
-    #
-    # # after a spacedata copy, an init should result in exact same situation
+    c_void_p, 'refresh',
+
+    # after a spacedata copy, an init should result in exact same situation
     # struct SpaceLink    *(*duplicate)(struct SpaceLink *)
-    #
-    # # register operator types on startup
+    c_void_p, 'duplicate',
+
+    # register operator types on startup
     # void (*operatortypes)(void)
-    # # add default items to WM keymap
+    c_void_p, 'operatortypes',
+    # add default items to WM keymap
     # void (*keymap)(struct wmKeyConfig *)
-    # # on startup, define dropboxes for spacetype+regions
+    c_void_p, 'keymap',
+    # on startup, define dropboxes for spacetype+regions
     # void (*dropboxes)(void)
-    #
-    # # return context data
+    c_void_p, 'dropboxes',
+
+    # return context data
     # int (*context)(const struct bContext *, const char *, struct bContextDataResult *)
-    #
-    # # region type definitions
-    # ListBase regiontypes
-    #
-    # # tool shelf definitions
-    # ListBase toolshelf
-    #
-    # # read and write...
-    #
-    # # default keymaps to add
-    # int keymapflag
+    c_void_p, 'context',
+
+    # Used when we want to replace an ID by another (or NULL).
+    # void (*id_remap)(struct ScrArea *, struct SpaceLink *, struct ID *, struct ID *);
+    c_void_p, 'id_remap',
+
+    # region type definitions
+    ListBase, 'regiontypes',
+
+    # tool shelf definitions
+    ListBase, 'toolshelf',
+
+    # read and write...
+
+    # default keymaps to add
+    c_int, 'keymapflag'
 )
 
 

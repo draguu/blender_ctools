@@ -71,7 +71,6 @@ class SaveConfirmPreferences(
         bpy.types.AddonPreferences):
     bl_idname = __name__
 
-
     use_save_as_mainfile = bpy.props.BoolProperty(
         name='Save As Main File',
         description='bpy.ops.wm.save_as_mainfile()',
