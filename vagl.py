@@ -18,13 +18,13 @@
 
 
 import math
-# from itertools import chain
+import contextlib
+import functools
+import inspect
 
 import bpy
-from bpy.props import *
 import blf
-# import mathutils as Math
-from mathutils import Euler, Vector, Quaternion, Matrix
+from mathutils import Vector, Matrix
 import bgl
 
 
@@ -36,6 +36,7 @@ persmat = winmat * viewmat
 
 
 GLA_PIXEL_OFS = 0.375
+
 
 class Buffer:
     def __new__(self, type, dimensions=0, template=None):
@@ -109,6 +110,35 @@ def glSwitch(attr, value):
         bgl.glDisable(attr)
 
 
+class GCM(contextlib._GeneratorContextManager):
+    @classmethod
+    def contextmanager(cls, func):
+        sig = inspect.signature(cls.__init__)
+        if '*' in str(sig.parameters['args']):
+            @functools.wraps(func)
+            def _func(*args, **kwargs):
+                return cls(func, *args, **kwargs)
+        else:
+            @functools.wraps(func)
+            def _func(*args, **kwargs):
+                return cls(func, args, kwargs)
+        return _func
+
+    def enter(self, result=False):
+        """
+        :type result: bool
+        :rtype: GCM | (GCM, T)
+        """
+        r = self.__enter__()
+        if result:
+            return self, r
+        else:
+            return self
+
+    def exit(self):
+        self.__exit__(None, None, None)
+
+
 class GLSettings:
     def __init__(self, context, view_matrix=None, perspective_matrix=None):
         rv3d = context.region_data
@@ -135,15 +165,13 @@ class GLSettings:
         self.projection_matrix = Buffer(
             'double', (4, 4), bgl.GL_PROJECTION_MATRIX)
 
-        self._modelview_stack = []
-        self._projection_stack = []
-        self._modelview_bak_2d = None
-        self._projection_bak_2d = None
-        self._modelview_bak_3d = None
-        self._projection_bak_3d = None
+        self._modelview_stack = []  # used in pop(), push()
+        self._projection_stack = []  # used in pop(), push()
 
         region = context.region
         self.region_size = region.width, region.height
+        window = context.window
+        self.window_size = window.width, window.height
 
         # staticmethod
         self.Buffer = Buffer
@@ -218,7 +246,8 @@ class GLSettings:
             dpi = bpy.context.user_preferences.system.dpi
         blf.size(id, size, dpi)
 
-    def _load_matrix(self, modelview=None, projection=None):
+    @classmethod
+    def _load_matrix(cls, modelview=None, projection=None):
         matrix_mode = Buffer('int', 0, bgl.GL_MATRIX_MODE)
         if modelview:
             bgl.glMatrixMode(bgl.GL_MODELVIEW)
@@ -249,32 +278,54 @@ class GLSettings:
                           self._projection_stack.pop())
         bgl.glPopAttrib()
 
-    def prepare_3d(self):
-        """POST_PIXELのcallbackでworld座標系を用いて描画する場合に使用する。"""
-        self._modelview_bak_3d = Buffer('double', (4, 4),
-                                        bgl.GL_MODELVIEW_MATRIX)
-        self._projection_bak_3d = Buffer('double', (4, 4),
-                                         bgl.GL_PROJECTION_MATRIX)
+    @classmethod
+    @GCM.contextmanager
+    def push_attrib(cls, mask=bgl.GL_ALL_ATTRIB_BITS, matrix=True):
+        """with文で使用する。
+        with GLSettings.push_attrib():
+            ...
+        :rtype: GCM
+        """
+
+        bgl.glPushAttrib(mask)
+        modelview = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
+        projection = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
+        yield
+        if matrix:
+            cls._load_matrix(modelview, projection)
+        bgl.glPopAttrib()
+
+    @GCM.contextmanager
+    def region_view3d_space(self):
+        """with文、又はデコレータとして使用
+        :rtype: GCM
+        """
+        modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
+        projection_mat = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
         view_mat = Buffer('double', (4, 4), self.view_matrix.transposed())
         win_mat = Buffer('double', (4, 4), self.window_matrix.transposed())
         self._load_matrix(view_mat, win_mat)
 
-    def restore_3d(self):
-        """prepare_3d()での変更を戻す"""
-        self._load_matrix(self._modelview_bak_3d, self._projection_bak_3d)
+        try:
+            yield
+        finally:
+            self._load_matrix(modelview_mat, projection_mat)
 
-    def prepare_2d(self):
-        """PRE_VIEW,POST_VIEWのcallbackでscreen座標系を用いて描画する場合に
-        使用する。
-        参照: ED_region_do_draw() -> ED_region_pixelspace() ->
-        wmOrtho2_region_pixelspace()
+    @GCM.contextmanager
+    def region_pixel_space(self):
+        """with文、又はデコレータとして使用
 
+        NOTE: Z値の範囲: near 〜 far
+        perspective_matrix * vec4d / w: -1.0 〜 +1.0
+        gluProject: 0.0 〜 +1.0
+        POST_PIXEL: +100 〜 -100
+        Z-Buffer: 0.0 〜 +1.0
+        :rtype: GCM
         """
-        self._modelview_bak_2d = Buffer('double', (4, 4),
-                                        bgl.GL_MODELVIEW_MATRIX)
-        self._projection_bak_2d = Buffer('double', (4, 4),
-                                         bgl.GL_PROJECTION_MATRIX)
-        matrix_mode = Buffer('int', 0, bgl.GL_MATRIX_MODE)
+
+        modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
+        projection_mat = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
+        matrix_mode = Buffer('int', 1, bgl.GL_MATRIX_MODE)
 
         bgl.glMatrixMode(bgl.GL_PROJECTION)
         bgl.glLoadIdentity()  # 必須
@@ -282,16 +333,55 @@ class GLSettings:
         # wmOrtho2_region_pixelspace(), wmOrtho2() 参照
         ofs = -0.01
         bgl.glOrtho(ofs, w + ofs, ofs, h + ofs, -100, 100)
-        # bgl.glTranslated(GLA_PIXEL_OFS, GLA_PIXEL_OFS, 0.0)
 
         bgl.glMatrixMode(bgl.GL_MODELVIEW)
         bgl.glLoadIdentity()
 
-        bgl.glMatrixMode(matrix_mode)
+        bgl.glMatrixMode(matrix_mode[0])
 
-    def restore_2d(self):
-        """prepare_2d()での変更を戻す"""
-        self._load_matrix(self._modelview_bak_2d, self._projection_bak_2d)
+        try:
+            yield
+        finally:
+            self._load_matrix(modelview_mat, projection_mat)
+
+    @GCM.contextmanager
+    def window_pixel_space(self):
+        """with文、又はデコレータとして使用
+        :rtype: GCM
+        """
+
+        win_width, win_height = self.window_size
+
+        modelview_mat = Buffer('double', (4, 4), bgl.GL_MODELVIEW_MATRIX)
+        projection_mat = Buffer('double', (4, 4), bgl.GL_PROJECTION_MATRIX)
+        matrix_mode = Buffer('int', 1, bgl.GL_MATRIX_MODE)
+        viewport = Buffer('int', 4, bgl.GL_VIEWPORT)
+
+        bgl.glViewport(0, 0, win_width, win_height)
+        bgl.glMatrixMode(bgl.GL_PROJECTION)
+        bgl.glLoadIdentity()
+        ofs = -0.01
+        bgl.glOrtho(ofs, win_width + ofs, ofs, win_height + ofs, -100, 100)
+        bgl.glMatrixMode(bgl.GL_MODELVIEW)
+        bgl.glLoadIdentity()
+        bgl.glMatrixMode(matrix_mode[0])
+
+        try:
+            yield
+        finally:
+            bgl.glViewport(*viewport)
+            self._load_matrix(modelview_mat, projection_mat)
+
+        # NOTE:
+        # PyOpenGLの場合
+        # modelview_mat = (ctypes.c_double * 16)()
+        # glGetDoublev(GL_MODELVIEW_MATRIX, ctypes.byref(modelview_mat))
+        #
+        # glMatrixMode()等でパラメーターにGLenumが要求される場合は
+        # c_uintでなければならない
+        # matrix_mode = ctypes.c_uint()
+        # glGetIntegerv(GL_MATRIX_MODE, ctypes.byref(matrix_mode))
+        # glMatrixMode(matrix_mode)
 
 
 def draw_circle(x, y, radius, subdivide, poly=False):

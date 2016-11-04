@@ -65,10 +65,13 @@ def quat_to_axis_view(quat, local_grid_rotation=None, epsilon=1e-6):
 
 
 def project(region, rv3d, vec):
-    """World Coords (3D) -> Window Coords (3D).
-    Window座標は左手系で、Zのクリッピング範囲は0~1。
+    """World Coords (3D) -> Region Coords (3D).
+    Region座標は左手系で、Zのクリッピング範囲は0~1。
+    :type region: bpy.types.Region
+    :type rv3d: bpy.types.RegionView3D
+    :type vec: mathutils.Vector | collections.abc.Sequence
     """
-    v = rv3d.perspective_matrix * vec.to_4d()
+    v = rv3d.perspective_matrix * Vector(vec).to_4d()
     if abs(v[3]) > PROJECT_MIN_NUMBER:
         v /= v[3]
     x = (1 + v[0]) * region.width * 0.5
@@ -78,8 +81,12 @@ def project(region, rv3d, vec):
 
 
 def unproject(region, rv3d, vec, depth_location:"world coords"=None):
-    """Window Coords (2D / 3D) -> World Coords (3D).
-    Window座標は左手系で、Zのクリッピング範囲は0~1。
+    """Region Coords (2D / 3D) -> World Coords (3D).
+    Region座標は左手系で、Zのクリッピング範囲は0~1。
+    :type region: bpy.types.Region
+    :type rv3d: bpy.types.RegionView3D
+    :type vec: mathutils.Vector | collections.abc.Sequence
+    :type depth_location: mathutils.Vector | collections.abc.Sequence
     """
     x = vec[0] * 2.0 / region.width - 1.0
     y = vec[1] * 2.0 / region.height - 1.0
