@@ -65,9 +65,9 @@ try:
     importlib.reload(utils)
     importlib.reload(modalmanager)
 except NameError:
-    from . import addongroup
-    from . import registerinfo
-    from . import utils
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
+    from .addonutils import utils
 from .modalmanager import ModalHandlerManager
 
 
