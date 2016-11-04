@@ -61,11 +61,11 @@ try:
     importlib.reload(st)
     importlib.reload(utils)
 except NameError:
-    from .va import addongroup
-    from .va import customproperty
-    from .va import registerinfo
-    from .va import structures as st
-    from .va import utils
+    from .addonutils import addongroup
+    from .addonutils import customproperty
+    from .addonutils import registerinfo
+    from .addonutils import structures as st
+    from .addonutils import utils
 
 
 # glVertexへ渡すZ値。
