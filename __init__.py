@@ -20,35 +20,45 @@
 bl_info = {
     'name': 'Mouse Gesture',
     'author': 'chromoly',
-    'version': (0, 7),
-    'blender': (2, 76, 0),
+    'version': (0, 7, 1),
+    'blender': (2, 78, 0),
     'location': 'UserPreferences > Add-ons > Mouse Gesture',
     'description': '',
     'warning': '',
-    'wiki_url': '',
-    'category': 'User Interface'}
+    'wiki_url': 'https://github.com/chromoly/blender_mouse_gesture',
+    'category': 'User Interface',
+}
 
 
-import math
-import fnmatch
 from contextlib import contextmanager
+import fnmatch
+import importlib
+import os
+import math
 
 import bpy
 import bgl
 import blf
 from mathutils import Vector
 
+try:
+    importlib.reload(addongroup)
+    importlib.reload(registerinfo)
+except NameError:
+    from . import addongroup
+    from . import registerinfo
+
 
 PIXEL_SIZE = 1.0
 
-_RELEASE = False
+RELEASE = 'LOCAL.txt' not in os.listdir(os.path.dirname(__file__))
 
 
 ###############################################################################
 # Settings
 ###############################################################################
 def reset_groups(context):
-    prefs = MouseGesturePreferences.get_prefs()
+    prefs = MouseGesturePreferences.get_instance()
     groups = prefs.gesture_groups
     groups.clear()
 
@@ -331,7 +341,7 @@ def prop_from_struct(prop):
     else:
         attrs['default'] = prop.default
     if prop.type in ('BOOLEAN', 'INT', 'FLOAT', 'STRING'):
-        if prop.subtype == 'LAYER_MEMBERSHIP':  # 未対応
+        if prop.subtype == 'LAYER_MEMBER':  # 未対応
             attrs['subtype'] = 'LAYER'
         else:
             attrs['subtype'] = prop.subtype
@@ -475,7 +485,7 @@ class MouseGestureItem(bpy.types.PropertyGroup):
                 'EXEC_REGION_PREVIEW', 'EXEC_AREA', 'EXEC_SCREEN']],
         default='INVOKE_DEFAULT'
     )
-    operator_undo = bpy.props.BoolProperty(name='Undo', default=False)
+    operator_undo = bpy.props.BoolProperty(name='Undo', default=True)
     operator_search = bpy.props.EnumProperty(
         name='Operator',
         items=prop_operator_search_items,
@@ -637,11 +647,11 @@ class WM_OT_mouse_gesture_stubs(bpy.types.Operator):
     function = bpy.props.StringProperty()
 
     def group_add(self, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         prefs.gesture_groups.add()
 
     def group_remove(self, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         i = list(prefs.gesture_groups).index(context.mg_group)
         prefs.gesture_groups.remove(i)
 
@@ -657,7 +667,7 @@ class WM_OT_mouse_gesture_stubs(bpy.types.Operator):
 
     @classmethod
     def groups_unset(cls, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         prefs.property_unset('gesture_groups')
 
     @classmethod
@@ -724,9 +734,11 @@ class WM_OT_mouse_gesture_from_text(bpy.types.Operator):
 
 
 class MouseGesturePreferences(
-        bpy.types.PropertyGroup if '.' in __package__ else
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
+        bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __name__
 
     # 属性確認用
     # BOOL = bpy.props.BoolProperty()
@@ -789,21 +801,8 @@ class MouseGesturePreferences(
                           icon='ZOOMIN')
         op.function = 'group_add'
 
-    @classmethod
-    def get_prefs(cls):
-        if '.' in __package__:
-            import importlib
-            pkg, name = __package__.split('.')
-            mod = importlib.import_module(pkg)
-            return mod.get_addon_preferences(name)
-        else:
-            context = bpy.context
-            return context.user_preferences.addons[__package__].preferences
-
-    @classmethod
-    def register(cls):
-        if '.' in __package__:
-            cls.get_prefs()
+        self.layout.separator()
+        super().draw(context)
 
 
 ###############################################################################
@@ -946,7 +945,7 @@ def region_is_overlap(context, area, region):
 
 
 def prop_group_enum_items(self, context):
-    prefs = MouseGesturePreferences.get_prefs()
+    prefs = MouseGesturePreferences.get_instance()
     items = []
     for group in prefs.gesture_groups:
         if group.name:
@@ -1062,7 +1061,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
                 return
 
         U = context.user_preferences
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         dpi = U.system.dpi
         widget_unit = int((PIXEL_SIZE * dpi * 20 + 36) / 72)
 
@@ -1182,7 +1181,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
             return 'D'
 
     def update_item(self, context):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
 
         self.item = None
         group = prefs.gesture_groups.get(self.group)
@@ -1199,7 +1198,7 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
                         return
 
     def coords_append(self, event, mco=None):
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         if mco is None:
             mco = Vector((event.mouse_x, event.mouse_y))
         mco_rel = mco - self.coords[-1]
@@ -1330,8 +1329,8 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
                 elif self.item.type == 'OPERATOR':
                     operator = get_operator(self.item.operator)
                     args = [self.item.operator_execution_context]
-                    if self.item.is_property_set('operator_undo'):
-                        args.append(self.item.operator_undo)
+                    # if self.item.is_property_set('operator_undo'):
+                    args.append(self.item.operator_undo)
                     kwargs = {}
                     for arg in self.item.operator_args:
                         n = arg.name.split('__')[-1]
@@ -1353,12 +1352,19 @@ class WM_OT_mouse_gesture(bpy.types.Operator):
 
     def invoke(self, context, event):
         U = context.user_preferences
-        prefs = MouseGesturePreferences.get_prefs()
+        prefs = MouseGesturePreferences.get_instance()
         if not self.group or self.group not in prefs.gesture_groups:
             return {'CANCELLED'}
 
         # 'FULL'だと全regionを再描画する為、除外する
         self.use_texture = not context.screen.is_animation_playing
+        if '.' in __name__:
+            try:
+                if context.space_data.drawnearest.enable:
+                    # テクスチャが真っ黒になるので無効化
+                    self.use_texture = False
+            except:
+                pass
 
         self.gen_textures(context)
 
@@ -1412,7 +1418,6 @@ classes = [
 
 
 changed_key_map_items = []
-addon_keymaps = []
 blender_keymaps = []
 
 
@@ -1434,15 +1439,17 @@ def scene_update_pre(scene):
 
 @bpy.app.handlers.persistent
 def load_handler(dummy):
-    prefs = MouseGesturePreferences.get_prefs()
-    prefs.ensure_operator_args()
+    prefs = MouseGesturePreferences.get_instance()
+    if prefs:
+        prefs.ensure_operator_args()
 
 
+@MouseGesturePreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    prefs = MouseGesturePreferences.get_prefs()
+    prefs = MouseGesturePreferences.get_instance()
     if not prefs.is_property_set('gesture_groups'):
         reset_groups(bpy.context)
 
@@ -1450,29 +1457,24 @@ def register():
     if kc:
         km = kc.keymaps.new('3D View', space_type='VIEW_3D',
                             region_type='WINDOW', modal=False)
-        if _RELEASE:
+        if RELEASE:
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       head=True)
-            kmi.properties.group = 'View'
-            addon_keymaps.append((km, kmi))
+            kmi.properties.group = 'Transform'
         else:
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       shift=True, head=True)
             kmi.properties.group = 'Transform: Scale'
-            addon_keymaps.append((km, kmi))
             kmi = km.keymap_items.new('wm.mouse_gesture', 'EVT_TWEAK_A', 'ANY',
                                       head=True)
             kmi.properties.group = 'Mesh Select Mode'
-            addon_keymaps.append((km, kmi))
 
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
     bpy.app.handlers.load_post.append(load_handler)
 
 
+@MouseGesturePreferences.module_unregister
 def unregister():
-    for km, kmi in addon_keymaps:
-        km.keymap_items.remove(kmi)
-    addon_keymaps.clear()
     for km, kmi in blender_keymaps:
         kmi.value = 'PRESS'
     blender_keymaps.clear()
