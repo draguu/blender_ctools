@@ -17,30 +17,33 @@
 # ##### END GPL LICENSE BLOCK #####
 
 
-"""
-MeshのEditModeに於いて、右クリックで選択される頂点/辺/面を強調表示する。
-"""
-
 bl_info = {
     'name': 'Edit Mesh Draw Nearest',
     'author': 'chromoly',
-    'version': (0, 4),
-    'blender': (2, 76, 0),
+    'version': (0, 4, 1),
+    'blender': (2, 78, 0),
     'location': 'View3D > Properties Panel > Mesh Display',
+    'description': 'Highlight mesh elements in editmode',
     'wiki_url': 'https://github.com/chromoly/blender-EditMeshDrawNearest',
     'category': '3D View',
 }
 
 
-import math
-from ctypes import addressof, sizeof, byref, c_bool, pointer
-import numpy as np
-import contextlib
-import functools
-import inspect
+"""
+MeshのEditModeに於いて、右クリックで選択される頂点/辺/面を強調表示する。
+"""
+
+
 import collections
+import contextlib
+import ctypes as ct
 import enum
-import time
+import functools
+import importlib
+import inspect
+import numpy as np
+import math
+import platform
 
 import bpy
 import bmesh
@@ -48,10 +51,21 @@ import mathutils
 from mathutils import Matrix, Vector
 import bgl
 import blf
+iface = bpy.app.translations.pgettext_iface
 # from bpy_extras.view3d_utils import location_3d_to_region_2d as project
 
-from .utils import AddonPreferences, SpaceProperty, operator_call
-from .structures import *
+try:
+    importlib.reload(addongroup)
+    importlib.reload(customproperty)
+    importlib.reload(registerinfo)
+    importlib.reload(st)
+    importlib.reload(utils)
+except NameError:
+    from . import addongroup
+    from . import customproperty
+    from . import registerinfo
+    from . import structures as st
+    from . import utils
 
 
 # glVertexへ渡すZ値。
@@ -60,6 +74,26 @@ OVERLAY_DRAW_Z = OVERLAY_MASK_Z - 1e-5
 
 # solid表示で辺を描画する際にED_view3d_polygon_offsetへ渡す値
 POLYGON_OFFSET_EDGE = 1.05
+
+
+translation_dict = {
+    'ja_JP': {
+        ('*', 'Highlight mesh elements in editmode'):
+            'メッシュエディットモードで選択予定の頂点・辺・面を強調表示する',
+        ('*', 'Vertex Select'): '頂点選択',
+        ('*', 'Edge Select'): '辺選択',
+        ('*', 'Face Select'): '面選択',
+        ('*', 'Color'): '色',
+        ('*', 'Vertex Line Width'): '頂点の線幅',
+        ('*', 'Edge Line Width'): '辺の線幅',
+        ('*', 'Edge Stipple'): '辺の点線サイズ',
+        # ('*', 'Face Emphasis'): '面の描画',
+        ('*', 'Face Fill Stipple'): '面の点描サイズ',
+
+        ('*', 'Loop Color'): 'ループ色',
+        ('*', 'Loop Select'): 'ループ選択',
+    }
+}
 
 
 def test_platform():
@@ -71,27 +105,31 @@ def test_platform():
 # Addon Preferences
 ###############################################################################
 class DrawNearestPreferences(
-        AddonPreferences,
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
 
     draw_set_vert = bpy.props.EnumProperty(
-        name='Draw Vertex',
-        items=(('VERT', 'Vert', ''),),
+        name='Vertex Select',
+        description='Vertex selection mode',
+        items=(('VERT', 'Vertex', ''),),
         default={'VERT'},
         options={'ENUM_FLAG'}
     )
     draw_set_edge = bpy.props.EnumProperty(
-        name='Draw Edge',
-        items=(('VERT', 'Vert', ''),
+        name='Edge Select',
+        description='Edge selection mode',
+        items=(('VERT', 'Vertex', ''),
                ('EDGE', 'Edge', '')),
         default={'VERT', 'EDGE'},
         options={'ENUM_FLAG'}
     )
     draw_set_face = bpy.props.EnumProperty(
-        name='Draw Face',
-        items=(('VERT', 'Vert', ''),
+        name='Face Select',
+        description='Face selection mode',
+        items=(('VERT', 'Vertex', ''),
                ('EDGE', 'Edge', ''),
                ('FACE', 'Face', '')),
         default={'VERT', 'EDGE', 'FACE'},
@@ -102,8 +140,8 @@ class DrawNearestPreferences(
         name='Overlay',
     )
 
-    select_color = bpy.props.FloatVectorProperty(
-        name='Select Color',
+    color = bpy.props.FloatVectorProperty(
+        name='Color',
         default=(0.0, 0.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
@@ -129,7 +167,7 @@ class DrawNearestPreferences(
         max=10,
     )
     edge_line_stipple = bpy.props.IntProperty(
-        name='Line Stipple',
+        name='Edge Stipple',
         default=5,
         min=0,
         max=20,
@@ -164,28 +202,28 @@ class DrawNearestPreferences(
         name='Loop Select',
         default=True,
     )
-    loop_select_color = bpy.props.FloatVectorProperty(
-        name='Loop Select Color',
+    loop_color = bpy.props.FloatVectorProperty(
+        name='Loop Color',
         default=(0.0, 0.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
         subtype='COLOR_GAMMA',
         size=4
     )
-    loop_select_line_width = bpy.props.IntProperty(
-        name='Loop Select Line Width',
+    loop_line_width = bpy.props.IntProperty(
+        name='Loop Line Width',
         default=3,
         min=0,
         max=10,
     )
-    loop_select_line_stipple = bpy.props.IntProperty(
-        name='Loop Select Line Stipple',
+    loop_line_stipple = bpy.props.IntProperty(
+        name='Loop Line Stipple',
         default=4,
         min=0,
         max=20,
     )
-    loop_select_face_stipple = bpy.props.IntProperty(
-        name='Loop Select Face Stipple',
+    loop_face_stipple = bpy.props.IntProperty(
+        name='Loop Face Stipple',
         description='Dot pattern size',
         default=2,
         min=1,
@@ -219,22 +257,22 @@ class DrawNearestPreferences(
         column = split.column()
         col = column.column()
         col.label('Draw:')
-        col.label('Vertex:')
+        col.label(iface('Vertex Select') + ':')
         row = col.row()
         sp = row.split(1.0 / 3)
         sp.row().prop(self, 'draw_set_vert')
-        col.label('Edge:')
+        col.label(iface('Edge Select') + ':')
         row = col.row()
         sp = row.split(1.0 / 3 * 2)
         sp.row().prop(self, 'draw_set_edge')
-        col.label('Face:')
+        col.label(iface('Face Select') + ':')
         row = col.row()
         sp = row.split()
         sp.row().prop(self, 'draw_set_face')
 
         column = split.column()
 
-        column.prop(self, 'select_color')
+        column.prop(self, 'color')
         column.prop(self, 'vertex_size')
         column.prop(self, 'vertex_line_width')
         column.prop(self, 'edge_line_width')
@@ -250,10 +288,10 @@ class DrawNearestPreferences(
         column.prop(self, 'use_loop_select')
         sub = column.column()
         sub.active = self.use_loop_select
-        sub.prop(self, 'loop_select_color')
-        sub.prop(self, 'loop_select_line_width')
-        sub.prop(self, 'loop_select_line_stipple')
-        sub.prop(self, 'loop_select_face_stipple')
+        sub.prop(self, 'loop_color')
+        sub.prop(self, 'loop_line_width')
+        sub.prop(self, 'loop_line_stipple')
+        sub.prop(self, 'loop_face_stipple')
 
         column = split.column()
         column.prop(self, 'use_overlay')
@@ -268,6 +306,9 @@ class DrawNearestPreferences(
         sub.active = test_platform()
         sub.prop(self, 'use_internal')
 
+        self.layout.separator()
+        super().draw(context)
+
 
 ###############################################################################
 # Space Property
@@ -281,9 +322,7 @@ class VIEW3D_PG_DrawNearest(bpy.types.PropertyGroup):
         name='Enable', update=update)
 
 
-space_prop = SpaceProperty(
-    [bpy.types.SpaceView3D, 'drawnearest',
-     VIEW3D_PG_DrawNearest])
+CustomProperty = customproperty.CustomProperty.new_class()
 
 
 ###############################################################################
@@ -683,39 +722,39 @@ def unified_findnearest(context, bm, mval):
         return None, (None, None, None)
 
     # Load functions ------------------------------------------------
-    blend_cdll = ctypes.CDLL('')
+    blend_cdll = ct.CDLL('')
 
     view3d_operator_needs_opengl = blend_cdll.view3d_operator_needs_opengl
 
     em_setup_viewcontext = blend_cdll.em_setup_viewcontext
     ED_view3d_backbuf_validate = blend_cdll.ED_view3d_backbuf_validate
     ED_view3d_select_dist_px = blend_cdll.ED_view3d_select_dist_px
-    ED_view3d_select_dist_px.restype = c_float
+    ED_view3d_select_dist_px.restype = ct.c_float
 
     EDBM_face_find_nearest_ex = blend_cdll.EDBM_face_find_nearest_ex
-    EDBM_face_find_nearest_ex.restype = POINTER(BMFace)
+    EDBM_face_find_nearest_ex.restype = ct.POINTER(st.BMFace)
     EDBM_edge_find_nearest_ex = blend_cdll.EDBM_edge_find_nearest_ex
-    EDBM_edge_find_nearest_ex.restype = POINTER(BMEdge)
+    EDBM_edge_find_nearest_ex.restype = ct.POINTER(st.BMEdge)
     EDBM_vert_find_nearest_ex = blend_cdll.EDBM_vert_find_nearest_ex
-    EDBM_vert_find_nearest_ex.restype = POINTER(BMVert)
+    EDBM_vert_find_nearest_ex.restype = ct.POINTER(st.BMVert)
 
     BPy_BMVert_CreatePyObject = blend_cdll.BPy_BMVert_CreatePyObject
-    BPy_BMVert_CreatePyObject.restype = py_object
+    BPy_BMVert_CreatePyObject.restype = ct.py_object
     BPy_BMEdge_CreatePyObject = blend_cdll.BPy_BMEdge_CreatePyObject
-    BPy_BMEdge_CreatePyObject.restype = py_object
+    BPy_BMEdge_CreatePyObject.restype = ct.py_object
     BPy_BMFace_CreatePyObject = blend_cdll.BPy_BMFace_CreatePyObject
-    BPy_BMFace_CreatePyObject.restype = py_object
+    BPy_BMFace_CreatePyObject.restype = ct.py_object
 
     # view3d_select_exec() ------------------------------------------
     # __class__rを使うのは警告対策: PyContext 'as_pointer' not found
     addr = context.__class__.as_pointer(context)
-    C = cast(c_void_p(addr), POINTER(bContext))
+    C = ct.cast(ct.c_void_p(addr), ct.POINTER(st.bContext))
     view3d_operator_needs_opengl(C)
 
     # EDBM_select_pick() --------------------------------------------
 
-    vc_obj = ViewContext()
-    vc = POINTER(ViewContext)(vc_obj)  # same as pointer(vc_obj)
+    vc_obj = st.ViewContext()
+    vc = ct.POINTER(st.ViewContext)(vc_obj)  # same as pointer(vc_obj)
 
     # setup view context for argument to callbacks
     em_setup_viewcontext(C, vc)
@@ -725,53 +764,56 @@ def unified_findnearest(context, bm, mval):
     # unified_findnearest() -----------------------------------------
 
     # only cycle while the mouse remains still
-    use_cycle = c_bool(mval_prev[0] == vc_obj.mval[0] and
-                       mval_prev[1] == vc_obj.mval[1])
+    use_cycle = ct.c_bool(mval_prev[0] == vc_obj.mval[0] and
+                          mval_prev[1] == vc_obj.mval[1])
     dist_init = ED_view3d_select_dist_px()  # float
     # since edges select lines, we give dots advantage of ~20 pix
-    dist_margin = c_float(dist_init / 2)
-    dist = c_float(dist_init)
-    efa_zbuf = POINTER(BMFace)()
-    eed_zbuf = POINTER(BMEdge)()
+    dist_margin = ct.c_float(dist_init / 2)
+    dist = ct.c_float(dist_init)
+    efa_zbuf = ct.POINTER(st.BMFace)()
+    eed_zbuf = ct.POINTER(st.BMEdge)()
 
-    eve = POINTER(BMVert)()
-    eed = POINTER(BMEdge)()
-    efa = POINTER(BMFace)()
+    eve = ct.POINTER(st.BMVert)()
+    eed = ct.POINTER(st.BMEdge)()
+    efa = ct.POINTER(st.BMFace)()
 
     # no afterqueue (yet), so we check it now,
     # otherwise the em_xxxofs indices are bad
     ED_view3d_backbuf_validate(vc)
 
     if dist.value > 0.0 and bm.select_mode & {'FACE'}:
-        dist_center = c_float(0.0)
+        dist_center = ct.c_float(0.0)
         if bm.select_mode & {'EDGE', 'VERT'}:
-            dist_center_p = POINTER(c_float)(dist_center)
+            dist_center_p = ct.POINTER(ct.c_float)(dist_center)
         else:
-            dist_center_p = POINTER(c_float)()  # 引数無しでNULLポインタになる
-        efa = EDBM_face_find_nearest_ex(vc, byref(dist), dist_center_p,
-                                        c_bool(1), use_cycle, byref(efa_zbuf))
+            dist_center_p = ct.POINTER(ct.c_float)()  # 引数無しでNULLポインタになる
+        efa = EDBM_face_find_nearest_ex(
+            vc, ct.byref(dist), dist_center_p, ct.c_bool(1), use_cycle,
+            ct.byref(efa_zbuf))
         if efa and dist_center_p:
             dist.value = min(dist_margin.value, dist_center.value)
 
     if dist.value > 0.0 and bm.select_mode & {'EDGE'}:
-        dist_center = c_float(0.0)
+        dist_center = ct.c_float(0.0)
         if bm.select_mode & {'VERT'}:
-            dist_center_p = POINTER(c_float)(dist_center)
+            dist_center_p = ct.POINTER(ct.c_float)(dist_center)
         else:
-            dist_center_p = POINTER(c_float)()
-        eed = EDBM_edge_find_nearest_ex(vc, byref(dist), dist_center_p,
-                                        c_bool(1), use_cycle, byref(eed_zbuf))
+            dist_center_p = ct.POINTER(ct.c_float)()
+        eed = EDBM_edge_find_nearest_ex(
+            vc, ct.byref(dist), dist_center_p, ct.c_bool(1), use_cycle,
+            ct.byref(eed_zbuf))
         if eed and dist_center_p:
             dist.value = min(dist_margin.value, dist_center.value)
 
     if dist.value > 0.0 and bm.select_mode & {'VERT'}:
-        eve = EDBM_vert_find_nearest_ex(vc, byref(dist), c_bool(1), use_cycle)
+        eve = EDBM_vert_find_nearest_ex(vc, ct.byref(dist), ct.c_bool(1),
+                                        use_cycle)
 
     if eve:
-        efa = POINTER(BMFace)()
-        eed = POINTER(BMEdge)()
+        efa = ct.POINTER(st.BMFace)()
+        eed = ct.POINTER(st.BMEdge)()
     elif eed:
-        efa = POINTER(BMFace)()
+        efa = ct.POINTER(st.BMFace)()
 
     if not (eve or eed or efa):
         if eed_zbuf:
@@ -782,7 +824,7 @@ def unified_findnearest(context, bm, mval):
     mval_prev[0] = vc_obj.mval[0]
     mval_prev[1] = vc_obj.mval[1]
 
-    bm_p = c_void_p(vc_obj.em.contents.bm)
+    bm_p = ct.c_void_p(vc_obj.em.contents.bm)
     v = BPy_BMVert_CreatePyObject(bm_p, eve) if eve else None
     e = BPy_BMEdge_CreatePyObject(bm_p, eed) if eed else None
     f = BPy_BMFace_CreatePyObject(bm_p, efa) if efa else None
@@ -815,29 +857,29 @@ class BMHeaderFlag(enum.IntEnum):  # 名前は適当
 def walker_select_count(em, walkercode, start, select, select_mix):
     tot = [0, 0]
 
-    blend_cdll = ctypes.CDLL('')
+    blend_cdll = ct.CDLL('')
     BMW_init = blend_cdll.BMW_init
     BMW_begin = blend_cdll.BMW_begin
-    BMW_begin.restype = POINTER(BMElem)
+    BMW_begin.restype = ct.POINTER(st.BMElem)
     BMW_step = blend_cdll.BMW_step
-    BMW_step.restype = POINTER(BMElem)
+    BMW_step.restype = ct.POINTER(st.BMElem)
     BMW_end = blend_cdll.BMW_end
 
     def BM_elem_flag_test_bool(ele, flag):
         return ele.contents.head.hflag & flag != 0
 
-    bm = c_void_p(em.contents.bm)
-    walker = BMWalker()
-    BMW_init(byref(walker), bm, walkercode,
+    bm = ct.c_void_p(em.contents.bm)
+    walker = st.BMWalker()
+    BMW_init(ct.byref(walker), bm, walkercode,
              BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
              BMWFlag.BMW_FLAG_TEST_HIDDEN,
              BMW_NIL_LAY)
-    ele = BMW_begin(byref(walker), start)
+    ele = BMW_begin(ct.byref(walker), start)
     while ele:
         i = BM_elem_flag_test_bool(ele, BMHeaderFlag.BM_ELEM_SELECT) != select
         tot[i] += 1
-        ele = BMW_step(byref(walker))
-    BMW_end(byref(walker))
+        ele = BMW_step(ct.byref(walker))
+    BMW_end(ct.byref(walker))
 
     return tot
 
@@ -848,25 +890,25 @@ def walker_select(em, walkercode, start, select):
     """
     r_elems = []
 
-    blend_cdll = ctypes.CDLL('')
+    blend_cdll = ct.CDLL('')
     BMW_init = blend_cdll.BMW_init
     BMW_begin = blend_cdll.BMW_begin
-    BMW_begin.restype = POINTER(BMElem)
+    BMW_begin.restype = ct.POINTER(st.BMElem)
     BMW_step = blend_cdll.BMW_step
-    BMW_step.restype = POINTER(BMElem)
+    BMW_step.restype = ct.POINTER(st.BMElem)
     BMW_end = blend_cdll.BMW_end
 
-    bm = c_void_p(em.contents.bm)
-    walker = BMWalker()
-    BMW_init(byref(walker), bm, walkercode,
+    bm = ct.c_void_p(em.contents.bm)
+    walker = st.BMWalker()
+    BMW_init(ct.byref(walker), bm, walkercode,
              BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
              BMWFlag.BMW_FLAG_TEST_HIDDEN,
              BMW_NIL_LAY)
-    ele = BMW_begin(byref(walker), start)
+    ele = BMW_begin(ct.byref(walker), start)
     while ele:
         r_elems.append(ele)
-        ele = BMW_step(byref(walker))
-    BMW_end(byref(walker))
+        ele = BMW_step(ct.byref(walker))
+    BMW_end(ct.byref(walker))
 
     return r_elems
 
@@ -882,8 +924,8 @@ def mouse_mesh_loop_edge_ring(em, eed, select, select_clear):
 def mouse_mesh_loop_edge(em, eed, select, select_clear, select_cycle):
     def BM_edge_is_boundary(e):
         l = e.contents.l
-        return (l and addressof(l.contents.radial_next.contents) ==
-                addressof(l.contents))
+        return (l and ct.addressof(l.contents.radial_next.contents) ==
+                ct.addressof(l.contents))
 
     edge_boundary = False
 
@@ -922,44 +964,44 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
         return None, []
 
     # Load functions ------------------------------------------------
-    blend_cdll = ctypes.CDLL('')
+    blend_cdll = ct.CDLL('')
 
     view3d_operator_needs_opengl = blend_cdll.view3d_operator_needs_opengl
 
     em_setup_viewcontext = blend_cdll.em_setup_viewcontext
     ED_view3d_backbuf_validate = blend_cdll.ED_view3d_backbuf_validate
     ED_view3d_select_dist_px = blend_cdll.ED_view3d_select_dist_px
-    ED_view3d_select_dist_px.restype = c_float
+    ED_view3d_select_dist_px.restype = ct.c_float
 
     EDBM_edge_find_nearest_ex = blend_cdll.EDBM_edge_find_nearest_ex
-    EDBM_edge_find_nearest_ex.restype = POINTER(BMEdge)
+    EDBM_edge_find_nearest_ex.restype = ct.POINTER(st.BMEdge)
 
     BPy_BMEdge_CreatePyObject = blend_cdll.BPy_BMEdge_CreatePyObject
-    BPy_BMEdge_CreatePyObject.restype = py_object
+    BPy_BMEdge_CreatePyObject.restype = ct.py_object
     BPy_BMElem_CreatePyObject = blend_cdll.BPy_BMElem_CreatePyObject
-    BPy_BMElem_CreatePyObject.restype = py_object
+    BPy_BMElem_CreatePyObject.restype = ct.py_object
 
     # edbm_select_loop_invoke() -------------------------------------
     # __class__を使うのは警告対策: PyContext 'as_pointer' not found
     addr = context.__class__.as_pointer(context)
-    C = cast(c_void_p(addr), POINTER(bContext))
+    C = ct.cast(ct.c_void_p(addr), ct.POINTER(st.bContext))
     view3d_operator_needs_opengl(C)
 
     # mouse_mesh_loop() ---------------------------------------------
-    vc_obj = ViewContext()
-    vc = POINTER(ViewContext)(vc_obj)  # same as pointer(vc_obj)
-    dist = c_float(ED_view3d_select_dist_px() * 0.6666)
+    vc_obj = st.ViewContext()
+    vc = ct.POINTER(st.ViewContext)(vc_obj)  # same as pointer(vc_obj)
+    dist = ct.c_float(ED_view3d_select_dist_px() * 0.6666)
     em_setup_viewcontext(C, vc)
     vc_obj.mval[0] = mval[0]
     vc_obj.mval[1] = mval[1]
 
     ED_view3d_backbuf_validate(vc)
 
-    eed = EDBM_edge_find_nearest_ex(vc, byref(dist), None, True, True, None)
+    eed = EDBM_edge_find_nearest_ex(vc, ct.byref(dist), None, True, True, None)
     if not eed:
         return None, []
 
-    bm_p = c_void_p(vc_obj.em.contents.bm)
+    bm_p = ct.c_void_p(vc_obj.em.contents.bm)
     active_edge = BPy_BMEdge_CreatePyObject(bm_p, eed)
 
     select = True
@@ -993,9 +1035,9 @@ def mouse_mesh_loop(context, bm, mval, extend, deselect, toggle, ring):
 
 
 def find_nearest_ctypes(context, context_dict, bm, mco_region):
-    context_dict_bak = context_py_dict_set(context, context_dict)
+    context_dict_bak = st.context_py_dict_set(context, context_dict)
     find, (eve, eed, efa) = unified_findnearest(context, bm, mco_region)
-    context_py_dict_set(context, context_dict_bak)
+    st.context_py_dict_set(context, context_dict_bak)
     if find:
         elem = eve or eed or efa
     else:
@@ -1016,10 +1058,10 @@ def find_loop_selection_ctypes(context, context_dict, bm, mco_region, ring,
     :return: active edge と 選択要素のタプル
     :rtype: T, list
     """
-    context_dict_bak = context_py_dict_set(context, context_dict)
+    context_dict_bak = st.context_py_dict_set(context, context_dict)
     edge, elems = mouse_mesh_loop(context, bm, mco_region, False, False,
                                   toggle, ring)
-    context_py_dict_set(context, context_dict_bak)
+    st.context_py_dict_set(context, context_dict_bak)
     return edge, elems
     # edge_coords = []
     # face_coords = []
@@ -1044,6 +1086,7 @@ def get_selected(bm):
 def find_nearest(context, context_dict, bm, mco_region):
     select_history = list(bm.select_history)
     active_face = bm.faces.active
+    active_material_index = context.active_object.active_material_index
 
     selected_verts, selected_edges, selected_faces = get_selected(bm)
 
@@ -1138,6 +1181,7 @@ def find_nearest(context, context_dict, bm, mco_region):
     for elem in select_history:
         bm.select_history.add(elem)
     bm.faces.active = active_face
+    context.active_object.active_material_index = active_material_index
 
     return active
 
@@ -1161,6 +1205,7 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
 
     select_history = list(bm.select_history)
     active_face = bm.faces.active
+    active_material_index = context.active_object.active_material_index
 
     verts_pre, edges_pre, faces_pre = get_selected(bm)
 
@@ -1193,9 +1238,9 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
         else:
             elems = edges
 
+    context.tool_settings.mesh_select_mode = mode
     if r != {'CANCELLED'} or not ring and toggle:
         bpy.ops.mesh.select_all(context_dict, False, action='DESELECT')
-        context.tool_settings.mesh_select_mode = mode
         if mode == [False, False, True]:
             for f in faces_pre:
                 f.select = True
@@ -1217,6 +1262,7 @@ def find_loop_selection(context, context_dict, bm, mco_region, ring, toggle):
         for elem in select_history:
             bm.select_history.add(elem)
         bm.faces.active = active_face
+        context.active_object.active_material_index = active_material_index
 
     return active_edge, elems
 
@@ -1257,7 +1303,7 @@ dm_cache = {}
 
 def get_dm(mesh):
     mesh_addr = mesh.as_pointer()
-    mesh_p = cast(c_void_p(mesh_addr), POINTER(Mesh))
+    mesh_p = ct.cast(ct.c_void_p(mesh_addr), ct.POINTER(st.Mesh))
     mesh_ = mesh_p.contents
     em_p = mesh_.edit_btmesh
     if em_p:
@@ -1273,7 +1319,7 @@ def get_dm_attr(mesh, dm, attr):
     if mesh_addr not in dm_cache:
         dm_cache[mesh_addr] = {}
     cache = dm_cache[mesh_addr]
-    dm_p = pointer(dm)
+    dm_p = ct.pointer(dm)
 
     if attr in cache:
         return cache[attr]
@@ -1291,69 +1337,70 @@ def get_dm_attr(mesh, dm, attr):
         value = dm.getNumLoops(dm_p)
 
     elif attr == 'vert_coords':
-        value = (c_float * 3 * get_dm_attr(mesh, dm, 'num_verts'))()
+        value = (ct.c_float * 3 * get_dm_attr(mesh, dm, 'num_verts'))()
         dm.getVertCos(dm_p, value)
 
     elif attr == 'vert_array':
-        value = (MVert * get_dm_attr(mesh, dm, 'num_verts'))()
+        value = (st.MVert * get_dm_attr(mesh, dm, 'num_verts'))()
         dm.copyVertArray(dm_p, value)
     elif attr == 'edge_array':
-        value = (MEdge * get_dm_attr(mesh, dm, 'num_edges'))()
+        value = (st.MEdge * get_dm_attr(mesh, dm, 'num_edges'))()
         dm.copyEdgeArray(dm_p, value)
     elif attr == 'face_array':
-        value = (MPoly * get_dm_attr(mesh, dm, 'num_faces'))()
+        value = (st.MPoly * get_dm_attr(mesh, dm, 'num_faces'))()
         dm.copyPolyArray(dm_p, value)
     elif attr == 'loop_array':
-        value = (MLoop * get_dm_attr(mesh, dm, 'num_loops'))()
+        value = (st.MLoop * get_dm_attr(mesh, dm, 'num_loops'))()
         dm.copyLoopArray(dm_p, value)
 
     elif attr == 'vert_origindex_array':
         num_verts = get_dm_attr(mesh, dm, 'num_verts')
         if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
-            value = (c_int * num_verts)(*range(num_verts))
+            value = (ct.c_int * num_verts)(*range(num_verts))
         else:
             arr = dm.getVertDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
             if arr:
-                value = (c_int * num_verts)()
-                ctypes.memmove(value, arr, sizeof(value))
+                value = (ct.c_int * num_verts)()
+                ct.memmove(value, arr, ct.sizeof(value))
             else:
                 value = None
     elif attr == 'edge_origindex_array':
         num_edges = get_dm_attr(mesh, dm, 'num_edges')
         if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
-            value = (c_int * num_edges)(*range(num_edges))
+            value = (ct.c_int * num_edges)(*range(num_edges))
         else:
             arr = dm.getEdgeDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
             if arr:
-                value = (c_int * num_edges)()
-                ctypes.memmove(value, arr, sizeof(value))
+                value = (ct.c_int * num_edges)()
+                ct.memmove(value, arr, ct.sizeof(value))
             else:
                 value = None
     elif attr == 'face_origindex_array':
         num_faces = get_dm_attr(mesh, dm, 'num_faces')
         if dm.type == DerivedMeshType.DM_TYPE_EDITBMESH:
-            value = (c_int * num_faces)(*range(num_faces))
+            value = (ct.c_int * num_faces)(*range(num_faces))
         else:
             arr = dm.getPolyDataArray(dm_p, CustomDataType.CD_ORIGINDEX)
             if arr:
-                value = (c_int * num_faces)()
-                ctypes.memmove(value, arr, sizeof(value))
+                value = (ct.c_int * num_faces)()
+                ct.memmove(value, arr, ct.sizeof(value))
             else:
                 value = None
 
     elif attr in {'face_center_origindex_np_array', 'face_center_np_array'}:
         # 1007616個の要素: 4.0s
         queue = collections.deque()
-        P = POINTER(c_float)
+        P = ct.POINTER(ct.c_float)
         def callback(userData, index, cent, no):
             # この方法だと12.0s
             # queue = cast(c_void_p(userData), py_object).value
             # v = list(cast(c_void_p(cent), POINTER(c_float * 3)).contents)
             # queue.append((index, v))
-            x = cast(cent, P)
+            x = ct.cast(cent, P)
             queue.append((index, (x[0], x[1], x[2])))
             return 0
-        func = CFUNCTYPE(c_int, c_void_p, c_int, c_void_p, c_void_p)(callback)
+        func = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_int, ct.c_void_p,
+                            ct.c_void_p)(callback)
         dm.foreachMappedFaceCenter(dm_p, func, id(queue),
                                    DMForeachFlag.DM_FOREACH_NOP)
 
@@ -1380,7 +1427,7 @@ def get_dm_attr(mesh, dm, attr):
     return value
 
 
-def get_bmdm_elems(mesh, bm, elems, require_face_centers):
+def get_bmdm_elems(mesh, bm, elems, require_face_centers, use_derived=True):
     dm_vert_elems = {}
     dm_edge_elems = {}
     dm_face_elems = {}
@@ -1403,9 +1450,12 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers):
             for e in elem.edges:
                 edges.add(e)
 
-    dm = get_dm(mesh)
+    if use_derived:
+        dm = get_dm(mesh)
+    else:
+        dm = None
     if dm:
-        co = (c_float * 3)()
+        co = (ct.c_float * 3)()
         for elem in verts:
             i = elem.index
             dm.getVertCo(dm, i, co)
@@ -1420,7 +1470,12 @@ def get_bmdm_elems(mesh, bm, elems, require_face_centers):
     for elem in faces:
         i = elem.index
         dm_face_elems[i] = ([v.index for v in elem.verts], i)
-        dm_face_center_elems[i] = (elem.calc_center_median(), i)
+        if dm:
+            coords = [dm_vert_elems[v.index][0] for v in elem.verts]
+            center = sum(coords, Vector()) / len(coords)
+        else:
+            center = elem.calc_center_median()
+        dm_face_center_elems[i] = (center, i)
 
     return dm_vert_elems, dm_edge_elems, dm_face_elems, dm_face_center_elems
 
@@ -1527,7 +1582,7 @@ def redraw_areas(context, force=False):
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
             v3d = area.spaces.active
-            prop = space_prop.get(v3d)
+            prop = v3d.drawnearest
             if force:
                 area.tag_redraw()
             elif prop.enable and v3d.viewport_shade != 'RENDERED':
@@ -1786,7 +1841,7 @@ def draw_callback(cls, context):
     if not data:
         return
 
-    prefs = DrawNearestPreferences.get_prefs()
+    prefs = DrawNearestPreferences.get_instance()
     event = data['event']
     area = context.area
     region = context.region
@@ -1803,7 +1858,7 @@ def draw_callback(cls, context):
         # data['callback_count'][key] = -1
         return
 
-    prop = space_prop.get(v3d)
+    prop = v3d.drawnearest
     if (not prop.enable or context.mode != 'EDIT_MESH' or
             v3d.viewport_shade == 'RENDERED'):
         return
@@ -1939,7 +1994,7 @@ def draw_callback(cls, context):
             cm.exit()
 
     if mode == 'select':
-        bgl.glColor4f(*prefs.select_color)
+        bgl.glColor4f(*prefs.color)
         # target_type, target_index, verts, edges, faces, medians = target
 
         offs_pmat = polygon_offset_pers_mat(rv3d, 1)
@@ -2104,17 +2159,17 @@ def draw_callback(cls, context):
             bgl.glDepthMask(0)
         else:
             bgl.glDisable(bgl.GL_DEPTH_TEST)
-        bgl.glColor4f(*prefs.loop_select_color)
+        bgl.glColor4f(*prefs.loop_color)
 
         if faces:
-            dot_size = 2 ** (prefs.loop_select_face_stipple - 1)
+            dot_size = 2 ** (prefs.loop_face_stipple - 1)
             setpolygontone(True, dot_size)
             draw_faces('FILL')
             setpolygontone(False)
 
         elif edges:
-            bgl.glLineWidth(prefs.loop_select_line_width)
-            setlinestyle(prefs.loop_select_line_stipple)
+            bgl.glLineWidth(prefs.loop_line_width)
+            setlinestyle(prefs.loop_line_stipple)
             draw_edges()
             setlinestyle(0)
             bgl.glLineWidth(1)
@@ -2186,18 +2241,20 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
             redraw_areas(context, True)
             return {'FINISHED', 'PASS_THROUGH'}
 
+        auto_save_manager.save(context)
+
         if context.mode != 'EDIT_MESH':
             return {'PASS_THROUGH'}
 
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
-                p = space_prop.get(area.spaces.active)
+                p = area.spaces.active.drawnearest
                 if p.enable:
                     break
         else:  # 現在のwindowに描画対象が無いならスキップ
             return {'PASS_THROUGH'}
 
-        prefs = DrawNearestPreferences.get_prefs()
+        prefs = DrawNearestPreferences.get_instance()
         data = self.active(win)
         mco = (event.mouse_x, event.mouse_y)
         mco_prev = data.get('mco')
@@ -2339,7 +2396,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 continue
             space_data = sa.spaces.active
             """:type: bpy.types.SpaceView3D"""
-            prop = space_prop.get(space_data)
+            prop = space_data.drawnearest
             if (not prop.enable or
                     space_data.viewport_shade == 'RENDERED'):
                 continue
@@ -2375,7 +2432,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                         mesh, bm, elems, require_face_centers)
             else:
                 verts, edges, faces, centers = get_bmdm_elems(
-                        mesh, bm, elems, require_face_centers)
+                        mesh, bm, elems, require_face_centers, False)
             elems_key = []
             for ele in elems:
                 if isinstance(ele, bmesh.types.BMVert):
@@ -2383,9 +2440,11 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                 else:
                     elems_key.append(repr(ele))
             key = (mode, tuple(elems_key))
-            dm_type = get_dm(mesh).type
-            data['target'] = [key, mode, dm_type, verts, edges, faces,
-                              centers]
+            dm = get_dm(mesh)
+            if dm:
+                dm_type = get_dm(mesh).type
+                data['target'] = [key, mode, dm_type, verts, edges, faces,
+                                  centers]
 
         data['object_is_updated'] = False
 
@@ -2415,13 +2474,14 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
                     break
 
         dm = get_dm(mesh)
-        data['dm_address'] = addressof(dm) if dm else None
-        data['dm_num_elems'] = [get_dm_attr(mesh, dm, 'num_verts'),
-                                get_dm_attr(mesh, dm, 'num_edges'),
-                                get_dm_attr(mesh, dm, 'num_faces'),
-                                get_dm_attr(mesh, dm, 'num_loops'),]
-        data['target_prev'] = data['target']
-        data['area_prev'] = area.as_pointer()
+        if dm:
+            data['dm_address'] = ct.addressof(dm) if dm else None
+            data['dm_num_elems'] = [get_dm_attr(mesh, dm, 'num_verts'),
+                                    get_dm_attr(mesh, dm, 'num_edges'),
+                                    get_dm_attr(mesh, dm, 'num_faces'),
+                                    get_dm_attr(mesh, dm, 'num_loops'),]
+            data['target_prev'] = data['target']
+            data['area_prev'] = area.as_pointer()
 
         return {'PASS_THROUGH'}
 
@@ -2433,7 +2493,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 
         win = context.window
         v3d = context.space_data
-        prop = space_prop.get(v3d)
+        prop = v3d.drawnearest
         type = self.type
         if self.type == 'TOGGLE':
             if prop.enable:
@@ -2481,7 +2541,7 @@ class VIEW3D_OT_draw_nearest_element(bpy.types.Operator):
 # Panel Draw Func / Callback / Register / Unregister
 ###############################################################################
 def menu_func(self, context):
-    prop = space_prop.get(context.space_data)
+    prop = context.space_data.drawnearest
     self.layout.separator()
     col = self.layout.column(align=True)
     """:type: bpy.types.UILayout"""
@@ -2508,12 +2568,12 @@ def scene_update_pre(scene):
             dm_updated = False
             dm_address = None
             dm_num_elems = [-1, -1, -1, -1]
-            prefs = DrawNearestPreferences.get_prefs()
+            prefs = DrawNearestPreferences.get_instance()
             if prefs.use_derived_mesh:
                 dm = get_dm(ob.data)
                 if dm:
-                    dm_address = addressof(dm)
-                    dm_p = pointer(dm)
+                    dm_address = ct.addressof(dm)
+                    dm_p = ct.pointer(dm)
                     dm_num_elems = [dm.getNumVerts(dm_p),
                                     dm.getNumEdges(dm_p),
                                     dm.getNumPolys(dm_p),
@@ -2531,13 +2591,13 @@ def scene_update_pre(scene):
     for area in win.screen.areas:
         if area.type == 'VIEW_3D':
             v3d = area.spaces.active
-            p = space_prop.get(v3d)
+            p = v3d.drawnearest
             if p.enable:
                 if not cls.active(win):
                     c = bpy.context.copy()
                     c['area'] = area
                     c['region'] = area.regions[-1]
-                    operator_call(
+                    utils.operator_call(
                         bpy.ops.view3d.draw_nearest_element,
                         c, 'INVOKE_DEFAULT', type='ENABLE',
                         _scene_update=False)
@@ -2554,29 +2614,48 @@ def load_pre(dummy):
     dm_cache.clear()
 
 
+auto_save_manager = utils.AutoSaveManager()
+
 classes = [
     DrawNearestPreferences,
     VIEW3D_PG_DrawNearest,
     VIEW3D_OT_draw_nearest_element,
+    CustomProperty,
 ]
 
 
+@DrawNearestPreferences.module_register
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    space_prop.register()
+
+    CustomProperty.utils.register_space_property(
+        bpy.types.SpaceView3D, 'drawnearest',
+        bpy.props.PointerProperty(type=VIEW3D_PG_DrawNearest)
+    )
+
+    auto_save_manager.register()
     bpy.types.VIEW3D_PT_view3d_meshdisplay.append(menu_func)
     bpy.app.handlers.scene_update_pre.append(scene_update_pre)
     bpy.app.handlers.load_pre.append(load_pre)
 
+    bpy.app.translations.register(__name__, translation_dict)
 
+
+@DrawNearestPreferences.module_unregister
 def unregister():
     bpy.app.handlers.scene_update_pre.remove(scene_update_pre)
     bpy.app.handlers.load_pre.remove(load_pre)
     bpy.types.VIEW3D_PT_view3d_meshdisplay.remove(menu_func)
-    space_prop.unregister()
+    auto_save_manager.unregister()
+
+    CustomProperty.utils.unregister_space_property(
+        bpy.types.SpaceView3D, 'drawnearest')
+
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
+
+    bpy.app.translations.unregister(__name__)
 
 
 if __name__ == '__main__':
