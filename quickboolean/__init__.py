@@ -49,8 +49,8 @@ try:
     importlib.reload(vagl)
     importlib.reload(vaview3d)
 except NameError:
-    from . import addongroup
-    from . import registerinfo
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
     from . import unitsystem
     from . import vagl
     from . import vaview3d

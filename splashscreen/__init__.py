@@ -47,8 +47,8 @@ try:
     importlib.reload(addongroup)
     importlib.reload(registerinfo)
 except NameError:
-    from . import addongroup
-    from . import registerinfo
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
 
 
 EPS = 0.005

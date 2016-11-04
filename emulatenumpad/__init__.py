@@ -51,9 +51,9 @@ try:
     importlib.reload(structures)
 except NameError:
     from .. import listvalidkeys
-    from . import addongroup
-    from . import registerinfo
-    from . import structures
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
+    from .addonutils import structures
 
 
 OPERATOR_PRIORITY = [

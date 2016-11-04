@@ -41,9 +41,9 @@ try:
     importlib.reload(registerinfo)
     importlib.reload(structures)
 except NameError:
-    from . import addongroup
-    from . import registerinfo
-    from . import structures
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
+    from .addonutils import structures
 
 
 TEXT_NAME = 'valid_shortcuts.txt'

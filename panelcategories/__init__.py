@@ -43,9 +43,9 @@ try:
     importlib.reload(registerinfo)
     importlib.reload(st)
 except NameError:
-    from . import addongroup
-    from . import registerinfo
-    from . import structures as st
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
+    from .addonutils import structures as st
 
 
 platform = _platform.platform().split('-')[0].lower()

@@ -45,11 +45,11 @@ try:
     importlib.reload(utils)
     importlib.reload(wrapoperator)
 except NameError:
-    from . import addongroup
-    from . import customproperty
-    from . import registerinfo
-    from . import structures
-    from . import utils
+    from .addonutils import addongroup
+    from .addonutils import customproperty
+    from .addonutils import registerinfo
+    from .addonutils import structures
+    from .addonutils import utils
     from . import wrapoperator
 
 
