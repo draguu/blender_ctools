@@ -41,8 +41,8 @@ try:
     importlib.reload(addongroup)
     importlib.reload(registerinfo)
 except NameError:
-    from . import addongroup
-    from . import registerinfo
+    from .va import addongroup
+    from .va import registerinfo
 
 
 def test_platform():

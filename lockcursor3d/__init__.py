@@ -52,10 +52,10 @@ try:
     importlib.reload(structures)
     importlib.reload(vagl)
 except NameError:
-    from . import addongroup
-    from . import customproperty
-    from . import registerinfo
-    from . import structures
+    from .va import addongroup
+    from .va import customproperty
+    from .va import registerinfo
+    from .va import structures
     from . import vagl
 
 

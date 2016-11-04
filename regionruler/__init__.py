@@ -84,11 +84,11 @@ try:
     importlib.reload(vav)
     importlib.reload(vawm)
 except NameError:
-    from . import addongroup
-    from . import customproperty
-    from . import registerinfo
+    from .va import addongroup
+    from .va import customproperty
+    from .va import registerinfo
+    from .va import utils
     from . import unitsystem
-    from . import utils
     from . import vagl
     from . import vamath as vam
     from . import vaprops as vap
