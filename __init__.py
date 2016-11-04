@@ -20,8 +20,8 @@
 bl_info = {
     'name': 'QuadView Move',
     'author': 'chromoly',
-    'version': (0, 2),
-    'blender': (2, 77, 0),
+    'version': (0, 2, 1),
+    'blender': (2, 78, 0),
     'location': 'View3D',
     'description': '',
     'warning': '',
@@ -36,17 +36,22 @@ QuadViewの境界中心をドラッグする事でその大きさを変更する
 """
 
 
+import ctypes as ct
 import importlib
 import math
 
 import bpy
 
 try:
-    importlib.reload(structures)
-    importlib.reload(utils)
+    importlib.reload(addongroup)
+    importlib.reload(customproperty)
+    importlib.reload(registerinfo)
+    importlib.reload(st)
 except NameError:
-    from . import utils
-from .structures import *
+    from . import addongroup
+    from . import customproperty
+    from . import registerinfo
+    from . import structures as st
 
 
 # regionの幅と高さの最小幅
@@ -54,8 +59,8 @@ MIN_SIZE = 5
 
 
 class QuadViewMovePreferences(
-        utils.AddonPreferences,
-        utils.AddonRegisterInfo,
+        addongroup.AddonGroupPreferences,
+        registerinfo.AddonRegisterInfo,
         bpy.types.PropertyGroup if '.' in __name__ else
         bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -73,15 +78,16 @@ class QuadViewMovePreferences(
         column = split.column()
         column = split.column()
 
-        super().draw(context, self.layout)
+        self.layout.separator()
+        super().draw(context)
 
 
 def swin_from_region(window, region):
-    win = cast(c_void_p(window.as_pointer()), POINTER(wmWindow)).contents
-    ar = cast(c_void_p(region.as_pointer()), POINTER(ARegion)).contents
+    win = ct.cast(window.as_pointer(), ct.POINTER(st.wmWindow)).contents
+    ar = ct.cast(region.as_pointer(), ct.POINTER(st.ARegion)).contents
     swinid = ar.swinid
 
-    swin_ptr = cast(win.subwindows.first, POINTER(wmSubWindow))
+    swin_ptr = ct.cast(win.subwindows.first, ct.POINTER(st.wmSubWindow))
     while swin_ptr:
         swin = swin_ptr.contents
         if swin.swinid == swinid:
@@ -97,12 +103,12 @@ def get_active_region_index(context, mx, my, regions, rv3d_list):
             return i
 
     # test modal handler
-    handlers = wmWindow.modal_handlers(context.window)
+    handlers = st.wmWindow.modal_handlers(context.window)
     for h, idname, sa, ar, rt in handlers:
         if idname in ('VIEW3D_OT_zoom', 'VIEW3D_OT_move'):
             if ar is not None:
                 for i, region in enumerate(regions[:3]):
-                    if region.as_pointer() == cast(ar, c_void_p).value:
+                    if region.as_pointer() == ct.cast(ar, ct.c_void_p).value:
                         return i
 
     # test mouse position
@@ -123,22 +129,20 @@ class VIEW3D_PG_QuadViewAspect(bpy.types.PropertyGroup):
     center = bpy.props.FloatVectorProperty(size=2)
 
 
-space_prop = utils.SpaceProperty(
-    [bpy.types.SpaceView3D, 'quadview_aspect',
-     VIEW3D_PG_QuadViewAspect])
+CustomProperty = customproperty.CustomProperty.new_class()
 
 
 def sync_quad(context, area):
     """source/blender/editors/screen/area.c: region_rect_recursive()辺りを参考
     """
     v3d = area.spaces.active
-    prop = space_prop.get(v3d)
+    prop = v3d.quadview_aspect
     if not prop.enable:
         return
     fx, fy = prop.center
 
     addr = context.window.as_pointer()
-    win = cast(c_void_p(addr), POINTER(wmWindow)).contents
+    win = ct.cast(addr, ct.POINTER(st.wmWindow)).contents
     event = win.eventstate.contents
 
     regions = [region for region in area.regions if region.type == 'WINDOW']
@@ -161,7 +165,7 @@ def sync_quad(context, area):
 
     for i, region in enumerate(regions):
         addr = region.as_pointer()
-        ar = cast(c_void_p(addr), POINTER(ARegion)).contents
+        ar = ct.cast(addr, ct.POINTER(st.ARegion)).contents
         rct = ar.winrct
         rect = [rct.xmin, rct.ymin, rct.xmax, rct.ymax]
         rect_bak = rect[:]
@@ -198,7 +202,7 @@ def sync_quad(context, area):
         rv3d_list = []
         for region_data in area.spaces.active.region_quadviews:
             addr = region_data.as_pointer()
-            rv3d = cast(c_void_p(addr), POINTER(RegionView3D)).contents
+            rv3d = ct.cast(addr, ct.POINTER(st.RegionView3D)).contents
             rv3d_list.append(rv3d)
         index = get_active_region_index(context, event.x, event.y, regions,
                                         rv3d_list)
@@ -232,7 +236,7 @@ class VIEW3D_OT_quadview_move(bpy.types.Operator):
 
     def modal(self, context, event):
         v3d = context.area.spaces.active
-        prop = space_prop.get(v3d)
+        prop = v3d.quadview_aspect
 
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             context.window.cursor_set('DEFAULT')
@@ -318,6 +322,7 @@ classes = [
     VIEW3D_OT_quadview_move,
     QuadViewMovePreferences,
     VIEW3D_PG_QuadViewAspect,
+    CustomProperty,
 ]
 
 
@@ -326,7 +331,9 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    space_prop.register()
+    CustomProperty.utils.register_space_property(
+        bpy.types.SpaceView3D, 'quadview_aspect',
+        bpy.props.PointerProperty(type=VIEW3D_PG_QuadViewAspect))
 
     bpy.app.handlers.scene_update_post.append(scene_update_func)
 
@@ -342,7 +349,8 @@ def register():
 def unregister():
     bpy.app.handlers.scene_update_post.remove(scene_update_func)
 
-    space_prop.unregister()
+    CustomProperty.utils.unregister_space_property(
+        bpy.types.SpaceView3D, 'quadview_aspect')
 
     for cls in classes[::-1]:
         bpy.utils.unregister_class(cls)
