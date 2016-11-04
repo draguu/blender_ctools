@@ -20,7 +20,7 @@
 bl_info = {
     'name': 'Update Tag',
     'author': 'chromoly',
-    'version': (0, 3, 1),
+    'version': (0, 3, 2),
     'blender': (2, 78, 0),
     'location': '',
     'description': '',
@@ -46,8 +46,8 @@ try:
     importlib.reload(addongroup)
     importlib.reload(registerinfo)
 except NameError:
-    from . import addongroup
-    from . import registerinfo
+    from .addonutils import addongroup
+    from .addonutils import registerinfo
 
 
 class UpdateTagPreferences(
